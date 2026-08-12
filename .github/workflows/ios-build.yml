@@ -44,9 +44,10 @@ jobs:
             exit 1
           fi
 
-          scheme="$(xcodebuild -list -json -workspace "$workspace" | jq -r '.workspace.schemes[0] // empty')"
+          scheme_candidate="$(basename "$workspace" .xcworkspace)"
+          scheme="$(xcodebuild -list -json -workspace "$workspace" | jq -r --arg candidate "$scheme_candidate" '.workspace.schemes[] | select(. == $candidate)' | head -n 1)"
           if [[ -z "$scheme" ]]; then
-            echo "No build scheme found in $workspace." >&2
+            echo "No app scheme matching $scheme_candidate found in $workspace." >&2
             exit 1
           fi
 
