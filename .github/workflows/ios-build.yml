@@ -38,7 +38,7 @@ jobs:
         id: ios-project
         shell: bash
         run: |
-          workspace="$(find ios -maxdepth 2 -name '*.xcworkspace' -print -quit)"
+          workspace="$(find ios -maxdepth 1 -name '*.xcworkspace' -print -quit)"
           if [[ -z "$workspace" ]]; then
             echo "No generated xcworkspace found." >&2
             exit 1
