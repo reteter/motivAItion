@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.domain-test-build/
+ios/
+android/
+.expo/
+*.log
+.DS_Store
+*.ipa
+Payload/

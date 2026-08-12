@@ -1,0 +1,92 @@
+name: iOS unsigned IPA
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  build-ios:
+    name: Build unsigned device IPA
+    runs-on: macos-26
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install JavaScript dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Generate iOS project
+        run: npx expo prebuild --platform ios --clean --no-install
+
+      - name: Install CocoaPods dependencies
+        run: pod install --project-directory=ios
+
+      - name: Discover workspace and scheme
+        id: ios-project
+        shell: bash
+        run: |
+          workspace="$(find ios -maxdepth 2 -name '*.xcworkspace' -print -quit)"
+          if [[ -z "$workspace" ]]; then
+            echo "No generated xcworkspace found." >&2
+            exit 1
+          fi
+
+          scheme="$(xcodebuild -list -json -workspace "$workspace" | jq -r '.workspace.schemes[0] // empty')"
+          if [[ -z "$scheme" ]]; then
+            echo "No build scheme found in $workspace." >&2
+            exit 1
+          fi
+
+          echo "workspace=$workspace" >> "$GITHUB_OUTPUT"
+          echo "scheme=$scheme" >> "$GITHUB_OUTPUT"
+
+      - name: Build Release for a physical device
+        shell: bash
+        run: |
+          xcodebuild \
+            -workspace "${{ steps.ios-project.outputs.workspace }}" \
+            -scheme "${{ steps.ios-project.outputs.scheme }}" \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath ios/build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            DEVELOPMENT_TEAM='' \
+            build
+
+      - name: Package unsigned IPA
+        shell: bash
+        run: |
+          app="$(find ios/build/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          if [[ -z "$app" || ! -d "$app" ]]; then
+            echo "Release device app bundle was not produced." >&2
+            exit 1
+          fi
+
+          mkdir -p Payload
+          cp -R "$app" Payload/
+          zip -qry motivaition-unsigned.ipa Payload
+          test -s motivaition-unsigned.ipa
+
+      - name: Upload unsigned IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: motivaition-ios-unsigned
+          path: motivaition-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 14

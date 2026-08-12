@@ -1,0 +1,16 @@
+{
+  "expo": {
+    "name": "motivAItion",
+    "slug": "motivaition",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "platforms": ["ios"],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.jakub.motivaition",
+      "buildNumber": "1"
+    }
+  }
+}
