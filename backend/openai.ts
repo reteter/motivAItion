@@ -137,7 +137,12 @@ export async function requestModelProposal(
   fetcher: typeof fetch = fetch,
   now = new Date(),
 ): Promise<ModelProposalResult> {
-  if (!env.OPENAI_API_KEY || !env.COACH_MODEL || env.PROMPT_VERSION !== context.promptVersion) {
+  if (
+    !env.OPENAI_API_KEY ||
+    !env.COACH_MODEL ||
+    !env.COACH_REASONING_EFFORT ||
+    env.PROMPT_VERSION !== context.promptVersion
+  ) {
     throw new Error('Backend coach configuration is incomplete.');
   }
   const response = await fetcher('https://api.openai.com/v1/responses', {
@@ -148,6 +153,7 @@ export async function requestModelProposal(
     },
     body: JSON.stringify({
       model: env.COACH_MODEL,
+      reasoning: { effort: env.COACH_REASONING_EFFORT },
       store: false,
       parallel_tool_calls: false,
       max_output_tokens: 500,

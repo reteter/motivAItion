@@ -12,6 +12,7 @@ export interface BackendEnv {
   OPENAI_API_KEY: string;
   ACCESS_CODE_HASH: string;
   COACH_MODEL: string;
+  COACH_REASONING_EFFORT: 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
   PROMPT_VERSION: string;
   MAX_REQUESTS_PER_DAY?: string;
   MAX_TOKENS_PER_DAY?: string;

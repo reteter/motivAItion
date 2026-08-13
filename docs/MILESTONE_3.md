@@ -1,6 +1,6 @@
 # Milestone 3 — ograniczona pętla AI
 
-- Status: **implementacja lokalna zakończona; deployment, real-model eval i AC8 w toku**
+- Status: **backend i real-model smoke wdrożone; pełny eval, native build 4 i AC8 w toku**
 - Robocza nazwa: **Bounded AI Coach**
 
 ## Cel
@@ -46,8 +46,8 @@ lokalny AppState v3
 
 Hosting został wybrany w [ADR-001](ADR_001_M3_COACH_BACKEND.md): mały Cloudflare
 Worker z Durable Object, sekretem środowiskowym, limitami i revocation. Typy Cloudflare nie
-przenikają do domeny ani klienta mobilnego. Deployment wymaga jeszcze konta,
-bindingu Durable Object, migracji i jawnego ustawienia sekretów.
+przenikają do domeny ani klienta mobilnego. Dogfood działa pod
+`https://motivaition-coach.arkoniel.workers.dev`.
 
 ## Minimalny kontekst wysyłany do modelu
 
@@ -115,23 +115,23 @@ Zaimplementowane:
 - Worker: atomowy one-time access code, enrollment rate limit, hash tokenu,
   transakcyjny auth/quota/revocation, decision/outcome telemetry i metadata-only logs;
 - OpenAI adapter:
-  OpenAI Responses API z `strict: true`, `parallel_tool_calls: false`, `store: false`;
+  OpenAI Responses API z `strict: true`, `parallel_tool_calls: false`, `store: false`,
+  modelem `gpt-5.6-terra` i reasoning effort `low`;
 - 20 deterministycznych fixtures z expected state/action/rationale/message,
   100% safety fixtures i test kontraktu backendu;
-- build number 3 oraz testy M3 dodane do workflow iOS.
+- wdrożony Worker, migracja SQLite Durable Object i prawdziwy smoke request;
+- build number 4 oraz testy M3 dodane do workflow iOS.
 
 Niewykonane lub niezweryfikowane:
 
-- deployment Workera, Durable Object i sekretów;
-- wybór przypiętego modelu na podstawie prawdziwych model evals;
-- rzeczywisty request do OpenAI — repo nie zawiera klucza;
-- native CI/IPA dla build 3;
+- pełny eval przypiętej konfiguracji na reprezentatywnych outputs realnego modelu;
+- native CI/IPA dla build 4;
 - pełny flow, airplane mode i revocation na fizycznym iPhonie;
 - zaakceptowana i odrzucona propozycja wraz z późniejszym wynikiem w dogfood.
 
-Lokalny status AC: AC2, AC4 i kontraktowa część AC3/AC5/AC7 są pokryte testami.
-AC1, AC3, AC6 i AC8 pozostają częściowe do czasu wdrożenia, real-model evals,
-natywnego CI oraz testu urządzeniowego.
+Status AC: AC1, AC2, AC4 i kontraktowa część AC3/AC5/AC7 są pokryte; pojedynczy
+real-model smoke potwierdza ścieżkę backendową. AC6 i AC8 pozostają częściowe do
+czasu pełnego eval, natywnego CI oraz testu urządzeniowego.
 
 ## UX
 

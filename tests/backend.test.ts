@@ -61,6 +61,7 @@ async function run() {
     OPENAI_API_KEY: ['server', 'only', 'test'].join('-'),
     ACCESS_CODE_HASH: await sha256(accessCode),
     COACH_MODEL: 'pinned-eval-model',
+    COACH_REASONING_EFFORT: 'low',
     PROMPT_VERSION: 'm3-v1',
     MAX_REQUESTS_PER_DAY: '20',
     MAX_TOKENS_PER_DAY: '5000',
@@ -234,6 +235,11 @@ async function run() {
   assert(
     capturedOpenAiBody.parallel_tool_calls === false && capturedOpenAiBody.store === false,
     'Responses request must disable parallel calls and response storage.',
+  );
+  assert(
+    capturedOpenAiBody.model === 'pinned-eval-model' &&
+      (capturedOpenAiBody.reasoning as { effort?: unknown } | undefined)?.effort === 'low',
+    'Responses request must use the pinned model and explicit reasoning effort.',
   );
   const tools = capturedOpenAiBody.tools;
   assert(

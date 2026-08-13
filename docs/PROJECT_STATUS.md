@@ -2,8 +2,8 @@
 
 - Aktualność dokumentu: **2026-08-13**
 - Baseline wdrożeniowy: **Milestone 2 / build number 2**
-- Stan roboczy: **Milestone 3 / build number 3, lokalna implementacja bez deploymentu**
-- Status: **M3 przechodzi testy lokalne; realny model, native CI i test urządzeniowy są otwarte**
+- Stan roboczy: **Milestone 3 / build number 4, backend dogfood wdrożony**
+- Status: **Terra/Low działa end-to-end; native CI, pełny eval i test urządzeniowy są otwarte**
 
 ## Aktualny vertical slice
 
@@ -45,9 +45,10 @@ pomijane. Dni odpoczynku nie są planowanymi occurrences i nie zaniżają wyniku
 
 ## Recovery i bounded AI coach
 
-W zweryfikowanym buildzie M2 coach nadal nie łączy się z API modelu. Aktualny kod
-M3 ma remote port i backend adapter, ale bez wdrożonego endpointu nadal działa
-wyłącznie lokalny fallback. Deterministyczny adapter może
+W zweryfikowanym buildzie M2 coach nadal nie łączy się z API modelu. Build 4 M3
+dostaje publiczny adres wdrożonego Workera przez `EXPO_PUBLIC_COACH_API_URL`, a
+przy braku konfiguracji, tokenu albo sieci nadal używa lokalnego fallbacku.
+Deterministyczny adapter może
 wyłącznie wykonywać zamknięte `CoachAction`, między innymi:
 
 - wybrać Minimum dla konkretnego occurrence;
@@ -69,7 +70,8 @@ historii. Przy sygnale bólu lista dozwolonych zmian usuwa każdą progresję.
 Backend z [ADR-001](ADR_001_M3_COACH_BACKEND.md) wymaga jednorazowego kodu,
 wydaje losowy token instalacji, przechowuje wyłącznie jego hash i egzekwuje
 dzienne limity requestów/tokenów. Sekret OpenAI i model są wyłącznie konfiguracją
-serwera. Worker nie został jeszcze wdrożony.
+serwera. Worker działa pod `https://motivaition-coach.arkoniel.workers.dev` z
+`gpt-5.6-terra` i reasoning effort `low`.
 
 ## Przypomnienia lokalne
 
@@ -79,7 +81,7 @@ systemową i planuje maksymalnie jedno przypomnienie dla najbliższej przyszłej
 sesji. Zmiana, przełożenie albo ukończenie anuluje nieaktualny identyfikator.
 Odmowa uprawnień nie blokuje harmonogramu ani treningów.
 
-Zweryfikowany build M2 ma numer `2`. Kod M3 zwiększa numer do `3`, a bundle identifier pozostaje
+Zweryfikowany build M2 ma numer `2`. Kod M3 zwiększa numer do `4`, a bundle identifier pozostaje
 `com.jakub.motivaition`, aby aktualizacja przez Sideloadly mogła zachować dane.
 
 ## Persistence i migracja
@@ -106,15 +108,17 @@ Token instalacji nie trafia do AppState ani AsyncStorage. Przechowuje go
   i blokuje późniejsze odtworzenie porzuconych zdarzeń;
 - dodatkowe pola, obcy occurrence, forbidden action, expiry i drugie apply są odrzucane;
 - apply nie może przyznać XP, dopisać completion ani zmienić Goal;
-- `npm run check:expo` — PASS, build number 3 i oba config plugins;
+- `npm run check:expo` — PASS, build number 4, publiczny URL coacha i oba config plugins;
 - `npx expo install --check` — PASS;
 - `npx expo-doctor` — 18/18 checks;
-- `npx expo export --platform ios --output-dir dist` — PASS, 740 modułów,
+- `npx expo export --platform ios --output-dir dist` — PASS, 741 modułów,
   Hermes bundle 2.1 MB;
 - składnia workflow, secret scan i `git diff --check` — PASS.
 
-Wciąż wymagane są natywny workflow build 3, deployment backendu, prawdziwy model
-eval i iPhone E2E.
+Wdrożony endpoint i health check są aktywne.
+Prawdziwy smoke request Terra/Low przeszedł w 2933 ms: 775 tokenów wejścia,
+71 wyjścia i zwalidowana rekomendacja Minimum. Wciąż wymagane są pełny eval
+modelu na fixtures, natywny workflow build 4 oraz iPhone E2E.
 
 Nieznany albo uszkodzony format jest odrzucany. Po błędzie odczytu stan domyślny
 nie może przejść do zwykłego flow ani zostać zapisany. Osobny ekran pozwala

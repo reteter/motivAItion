@@ -12,11 +12,13 @@ Expo and native iOS gates. Its [device build](https://github.com/reteter/motivAI
 publishes build number 2 as `motivaition-ios-unsigned`. Notification delivery and
 the update path still need physical-iPhone validation before M2 is fully closed.
 
-M3 is implemented locally as build number 3: versioned minimal context, strict
+M3 is deployed for dogfood as build number 4: versioned minimal context, strict
 proposal validation, opt-in UX, Secure Store installation token, local fallback,
 20 fixture scenarios and a tested Cloudflare Worker backend adapter for OpenAI
-Responses API. The backend is **not deployed**, no OpenAI key is present, and no
-real model request or iPhone flow has been verified yet.
+Responses API. The Cloudflare Worker uses `gpt-5.6-terra` with low reasoning at
+`https://motivaition-coach.arkoniel.workers.dev`; its OpenAI key remains a server
+secret. A real backend/model smoke test passes, while the physical-device M3 flow
+still requires verification.
 
 Current implementation details, verification evidence and known limitations are
 tracked in [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md). M2 scope and device
@@ -61,9 +63,9 @@ evidence and remaining rollout work are in [docs/MILESTONE_3.md](docs/MILESTONE_
 
 There is no model API key in the mobile client, no EAS and no third-party analytics.
 M3 has bounded first-party metadata telemetry for proposal decisions and outcomes.
-Remote
-AI becomes live only after deploying the Worker, setting its secrets, choosing a
-pinned model from real evals and building the app with the public HTTPS endpoint.
+Remote AI is live in the backend with a pinned model; the public HTTPS endpoint is
+injected into local Expo development and CI builds through
+`EXPO_PUBLIC_COACH_API_URL`.
 Accounts/cloud sync, characters, quests and social systems remain out of scope.
 
 ## Local development on Windows 11
@@ -94,7 +96,7 @@ for a physical iPhone with signing disabled and publishes:
 - file after extracting the artifact: `motivaition-unsigned.ipa`
 
 The bundle identifier is `com.jakub.motivaition`. The verified M2 IPA is build 2;
-the current M3 source declares build number `3` and still requires native CI. Keep the
+the current M3 source declares build number `4` and still requires native CI. Keep the
 bundle ID and the Apple ID used by Sideloadly stable across reinstalls to preserve
 local app data; increment the build number for later installable releases.
 
