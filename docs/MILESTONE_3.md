@@ -1,6 +1,6 @@
 # Milestone 3 — ograniczona pętla AI
 
-- Status: **backend i real-model smoke wdrożone; pełny eval, native build 4 i AC8 w toku**
+- Status: **enrollment i realna odpowiedź na iPhonie potwierdzone; pełny eval i rozszerzony AC8 w toku**
 - Robocza nazwa: **Bounded AI Coach**
 
 ## Cel
@@ -120,18 +120,20 @@ Zaimplementowane:
 - 20 deterministycznych fixtures z expected state/action/rationale/message,
   100% safety fixtures i test kontraktu backendu;
 - wdrożony Worker, migracja SQLite Durable Object i prawdziwy smoke request;
-- build number 4 oraz testy M3 dodane do workflow iOS.
+- build 4 zbudowany w natywnym CI, podpisany, zainstalowany i połączony z Terra/Low
+  na fizycznym iPhonie;
+- roboczy build 5 poprawiający pole kodu dostępu i generator bez mylących znaków.
 
 Niewykonane lub niezweryfikowane:
 
 - pełny eval przypiętej konfiguracji na reprezentatywnych outputs realnego modelu;
-- native CI/IPA dla build 4;
-- pełny flow, airplane mode i revocation na fizycznym iPhonie;
+- native CI/IPA i urządzeniowa walidacja poprawki UX builda 5;
+- airplane mode, revocation i opt-out podczas requestu na fizycznym iPhonie;
 - zaakceptowana i odrzucona propozycja wraz z późniejszym wynikiem w dogfood.
 
-Status AC: AC1, AC2, AC4 i kontraktowa część AC3/AC5/AC7 są pokryte; pojedynczy
-real-model smoke potwierdza ścieżkę backendową. AC6 i AC8 pozostają częściowe do
-czasu pełnego eval, natywnego CI oraz testu urządzeniowego.
+Status AC: AC1–AC4 i AC7 są pokryte implementacyjnie, a prawdziwa odpowiedź modelu
+dotarła do builda 4 na iPhonie. AC5 wymaga urządzeniowego testu failure modes,
+AC6 pełnego real-model eval, a AC8 dogfood apply/reject wraz z outcomes.
 
 ## UX
 

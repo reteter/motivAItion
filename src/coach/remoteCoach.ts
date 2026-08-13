@@ -135,7 +135,7 @@ export class HttpRemoteCoach implements RemoteCoach {
         {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ accessCode: accessCode.trim() }),
+          body: JSON.stringify({ accessCode: accessCode.replace(/\s/g, '') }),
         },
         DEFAULT_TIMEOUT_MS,
         signal,

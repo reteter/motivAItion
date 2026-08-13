@@ -17,8 +17,11 @@ proposal validation, opt-in UX, Secure Store installation token, local fallback,
 20 fixture scenarios and a tested Cloudflare Worker backend adapter for OpenAI
 Responses API. The Cloudflare Worker uses `gpt-5.6-terra` with low reasoning at
 `https://motivaition-coach.arkoniel.workers.dev`; its OpenAI key remains a server
-secret. A real backend/model smoke test passes, while the physical-device M3 flow
-still requires verification.
+secret. A real backend/model smoke test passes. The physical-device M3 flow is
+also verified for one-time enrollment and a real Terra response. Full
+real-model eval, device failure modes and apply/reject outcome dogfood remain
+open. Working build 5 improves keyboard handling, code visibility and manual
+transcription.
 
 Current implementation details, verification evidence and known limitations are
 tracked in [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md). M2 scope and device
@@ -95,8 +98,9 @@ for a physical iPhone with signing disabled and publishes:
 - GitHub artifact: `motivaition-ios-unsigned`
 - file after extracting the artifact: `motivaition-unsigned.ipa`
 
-The bundle identifier is `com.jakub.motivaition`. The verified M2 IPA is build 2;
-the current M3 source declares build number `4` and still requires native CI. Keep the
+The bundle identifier is `com.jakub.motivaition`. Verified M3 build 4 runs on a
+physical iPhone; the current source declares build number `5` and still requires
+native CI. Keep the
 bundle ID and the Apple ID used by Sideloadly stable across reinstalls to preserve
 local app data; increment the build number for later installable releases.
 

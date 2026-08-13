@@ -5,8 +5,9 @@ bindingu Durable Object `COACH_COORDINATOR` do eksportowanej klasy
 `CoachCoordinator` oraz sekretów/zmiennych:
 
 - `OPENAI_API_KEY` — sekret, nigdy `EXPO_PUBLIC_*`;
-- `ACCESS_CODE_HASH` — SHA-256 jednorazowego kodu dogfood. Kod musi być wynikiem
-  32 losowych bajtów zapisanych jako 43 znaki base64url bez paddingu;
+- `ACCESS_CODE_HASH` — SHA-256 jednorazowego kodu dogfood. Generator tworzy
+  kryptograficznie losowy kod o długości 43 znaków z alfabetu bez mylących
+  `I`, `l`, `O`, `0` i `1`;
 - `COACH_MODEL=gpt-5.6-terra` — przypięty model wybrany do pierwszego dogfood;
 - `COACH_REASONING_EFFORT=low` — jawny kompromis latency/jakość dla krótkiej
   propozycji w aplikacji mobilnej;
@@ -20,8 +21,9 @@ Kod i hash generuje lokalnie:
 npm run coach:generate-access-code
 ```
 
-Pierwszą linię przekazuje się użytkownikowi prywatnie, a wyłącznie hash ustawia
-się jako sekret Workera. Kod jest wyświetlany tylko raz i nie trafia do pliku.
+Kod z pierwszej linii przekazuje się użytkownikowi prywatnie; wariant `Manual
+entry` można wpisać razem ze spacjami w aplikacji. Wyłącznie hash ustawia się
+jako sekret Workera. Kod jest wyświetlany tylko raz i nie trafia do pliku.
 
 Worker udostępnia `POST /v1/installations`, `DELETE
 /v1/installations/current`, `POST /v1/coach/proposals`, `POST /v1/coach/events`

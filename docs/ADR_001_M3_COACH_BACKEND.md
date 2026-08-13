@@ -28,7 +28,7 @@ bez zmian w domenie aplikacji.
 | Ryzyko | Kontrola |
 |---|---|
 | klucz OpenAI w IPA | sekret istnieje wyłącznie w środowisku Workera |
-| skopiowany kod dostępu | dokładnie 32 losowe bajty base64url (256 bitów), limit 5 prób/IP/godzinę i atomowe oznaczenie jako użyty |
+| skopiowany kod dostępu | 43 kryptograficznie losowe znaki z alfabetu bez `I/l/O/0/1` (>240 bitów), limit 5 prób/IP/godzinę i atomowe oznaczenie jako użyty |
 | przejęty token | losowy token 256-bit, w Durable Object tylko SHA-256, atomowy revocation |
 | nieograniczony koszt | atomowa rezerwacja limitu requestów i tokenów przed modelem, krótki output |
 | prompt injection z danych | brak swobodnego tekstu w `CoachContextV1`, strict tool schema |

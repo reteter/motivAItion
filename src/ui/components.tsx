@@ -14,7 +14,9 @@ export function Page({ children }: PropsWithChildren) {
   return (
     <ScrollView
       contentContainerStyle={styles.page}
+      keyboardDismissMode="interactive"
       keyboardShouldPersistTaps="handled"
+      style={styles.pageScroll}
     >
       {children}
     </ScrollView>
@@ -155,6 +157,10 @@ export function TopBar({
 }
 
 const styles = StyleSheet.create({
+  pageScroll: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
   page: {
     flexGrow: 1,
     paddingHorizontal: spacing.lg,

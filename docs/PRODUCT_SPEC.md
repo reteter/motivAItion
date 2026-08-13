@@ -2,9 +2,10 @@
 
 > **Stan realizacji — 2026-08-13:** Milestone 1 został dostarczony i zweryfikowany.
 > Milestone 2 jest zaimplementowany, przeszedł niezależne review, lokalne gate'y
-> i natywny build IPA; oczekuje na test przypomnienia i aktualizacji na iPhonie.
-> Milestone 3 ma lokalnie zaimplementowane kontrakty, UX, fallback, fixture'y i
-> backend adapter, ale nie ma jeszcze wdrożonego endpointu ani realnego requestu modelu.
+> i natywny build IPA; nadal wymaga urządzeniowej walidacji przypomnienia oraz
+> tygodniowego użycia. Milestone 3 ma wdrożony backend, przypięty model
+> `gpt-5.6-terra`/Low i zweryfikowane połączenie end-to-end na fizycznym iPhonie.
+> Pełny eval modelu, failure modes oraz cykl apply/reject → outcome pozostają otwarte.
 > Szczegóły są w [PROJECT_STATUS.md](PROJECT_STATUS.md) i
 > [MILESTONE_2.md](MILESTONE_2.md), a następny proponowany slice w
 > [MILESTONE_3.md](MILESTONE_3.md). Ta specyfikacja pozostaje dokumentem docelowym.
@@ -623,8 +624,9 @@ Nie implementować w pierwszym MVP.
 
 # 22. Pierwszy MVP — Milestone 1
 
-**Status:** dostarczony. Aplikacja realizuje pełną pętlę pojedynczej sesji. Coach
-jest obecnie lokalnym, deterministycznym adapterem i nie korzysta z API modelu.
+**Status:** dostarczony. Aplikacja realizuje pełną pętlę pojedynczej sesji. W zakresie
+M1 coach był lokalnym, deterministycznym adapterem; M3 dodaje ograniczone połączenie
+z modelem bez oddawania mu źródła prawdy.
 Dokładne różnice między specyfikacją a implementacją opisuje
 [PROJECT_STATUS.md](PROJECT_STATUS.md).
 
@@ -852,9 +854,9 @@ Jeżeli odpowiedź będzie pozytywna, system można rozszerzać na kolejne rodza
 
 Milestone 1 pozwolił sprawdzić użyteczność pojedynczego treningu. Milestone 2
 dodaje jawnie zaplanowane, wykonane, przełożone i pominięte sesje, Consistency
-7/30 oraz spokojny recovery. Po walidacji tygodniowego użycia te dane mogą stać
-się bezpiecznym wejściem dla ograniczonego modelu AI. Kontrakt pierwszego takiego
-adaptera opisuje [MILESTONE_3.md](MILESTONE_3.md).
+7/30 oraz spokojny recovery. Milestone 3 przekazuje ich zminimalizowane agregaty
+do ograniczonego modelu AI i został połączony end-to-end na iPhonie. Jego kontrakt
+i pozostałe kryteria dogfood opisuje [MILESTONE_3.md](MILESTONE_3.md).
 
 ---
 

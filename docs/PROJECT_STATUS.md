@@ -1,9 +1,9 @@
 # Stan projektu motivAItion
 
 - Aktualność dokumentu: **2026-08-13**
-- Baseline wdrożeniowy: **Milestone 2 / build number 2**
-- Stan roboczy: **Milestone 3 / build number 4, backend dogfood wdrożony**
-- Status: **Terra/Low działa end-to-end; native CI, pełny eval i test urządzeniowy są otwarte**
+- Baseline wdrożeniowy: **Milestone 3 / build number 4 na fizycznym iPhonie**
+- Stan roboczy: **Milestone 3 / build number 5, poprawiony UX kodu dostępu**
+- Status: **Terra/Low działa end-to-end na iPhonie; pełny eval i rozszerzony dogfood są otwarte**
 
 ## Aktualny vertical slice
 
@@ -81,7 +81,8 @@ systemową i planuje maksymalnie jedno przypomnienie dla najbliższej przyszłej
 sesji. Zmiana, przełożenie albo ukończenie anuluje nieaktualny identyfikator.
 Odmowa uprawnień nie blokuje harmonogramu ani treningów.
 
-Zweryfikowany build M2 ma numer `2`. Kod M3 zwiększa numer do `4`, a bundle identifier pozostaje
+Zweryfikowany i zainstalowany build M3 ma numer `4`. Bieżące źródła zwiększają numer
+do `5` dla poprawki pola jednorazowego kodu, a bundle identifier pozostaje
 `com.jakub.motivaition`, aby aktualizacja przez Sideloadly mogła zachować dane.
 
 ## Persistence i migracja
@@ -108,17 +109,23 @@ Token instalacji nie trafia do AppState ani AsyncStorage. Przechowuje go
   i blokuje późniejsze odtworzenie porzuconych zdarzeń;
 - dodatkowe pola, obcy occurrence, forbidden action, expiry i drugie apply są odrzucane;
 - apply nie może przyznać XP, dopisać completion ani zmienić Goal;
-- `npm run check:expo` — PASS, build number 4, publiczny URL coacha i oba config plugins;
+- `npm run check:expo` — PASS, build number 5, publiczny URL coacha i oba config plugins;
 - `npx expo install --check` — PASS;
 - `npx expo-doctor` — 18/18 checks;
 - `npx expo export --platform ios --output-dir dist` — PASS, 741 modułów,
   Hermes bundle 2.1 MB;
 - składnia workflow, secret scan i `git diff --check` — PASS.
 
-Wdrożony endpoint i health check są aktywne.
-Prawdziwy smoke request Terra/Low przeszedł w 2933 ms: 775 tokenów wejścia,
-71 wyjścia i zwalidowana rekomendacja Minimum. Wciąż wymagane są pełny eval
-modelu na fixtures, natywny workflow build 4 oraz iPhone E2E.
+Wdrożony endpoint i health check są aktywne. Prawdziwy smoke request Terra/Low
+przeszedł w 2933 ms: 775 tokenów wejścia, 71 wyjścia i zwalidowana rekomendacja
+Minimum. Build 4 został następnie zainstalowany na fizycznym iPhonie: jednorazowy
+kod został wymieniony na token, a aplikacja otrzymała prawidłową odpowiedź
+zdalnego coacha. Kod dostępu został zgodnie z kontraktem zużyty.
+
+Bieżący build 5 poprawia ręczne wpisywanie kodu: ekran reaguje na klawiaturę,
+pozwala pokazać/ukryć znaki, używa fontu monospace, liczy 43 znaki i pomija
+spacje. Generator kolejnych kodów nie używa mylących `I/l/O/0/1`. Lokalne gate'y
+builda 5 są zielone; jego natywny workflow i test tej poprawki na iPhonie są otwarte.
 
 Nieznany albo uszkodzony format jest odrzucany. Po błędzie odczytu stan domyślny
 nie może przejść do zwykłego flow ani zostać zapisany. Osobny ekran pozwala
@@ -171,6 +178,12 @@ oczekiwany plik IPA. Workflow zgłosił nieblokujące ostrzeżenie o migracji
 wewnętrznego runtime Node dla `actions/upload-artifact@v4`; build aplikacji nadal
 używa skonfigurowanego Node 20.
 
+[GitHub Actions run 31688700959](https://github.com/reteter/motivAItion/actions/runs/31688700959)
+dla commita `e833246` zbudował M3 build 4 w 4m29s i opublikował artefakt
+`motivaition-ios-unsigned` z plikiem `motivaition-unsigned.ipa`. IPA została
+podpisana przez Sideloadly, zainstalowana na fizycznym iPhonie i połączyła się
+z wdrożonym coachem Terra/Low.
+
 ## Aktualny stack
 
 - Expo `54.0.36`;
@@ -203,9 +216,17 @@ tests/coach*.ts              20 fixtures, privacy, safety i failure modes
 tests/backend.test.ts        kontrakt auth/tool/quota/revocation
 ```
 
-## Następny krok
+## Pozostałe względem specyfikacji
 
-Najbliższa ścieżka to pełne lokalne gate’y M3, review diffu i — po zgodzie na
-publikację — natywny build 3. Równolegle trzeba zamknąć urządzeniowe AC8 M2.
-Włączenie prawdziwego modelu wymaga utworzenia Workera/Durable Object, ustawienia sekretów,
-real-model evals oraz publicznego `EXPO_PUBLIC_COACH_API_URL` w buildzie.
+1. Zamknąć M3: real-model eval, offline/revoked-token fallback oraz dogfood
+   `Zastosuj` i `Nie teraz` z późniejszym wynikiem occurrence.
+2. Dokończyć walidację urządzeniową M2: przypomnienie bez duplikatów, zachowanie
+   danych przy aktualizacji, tygodniowy scenariusz i realna zmiana strefy/DST.
+3. Zweryfikować, czy coach rzeczywiście poprawia długoterminową realizację celu;
+   obecny test potwierdza techniczny vertical slice, nie główną hipotezę KPI.
+4. Dopiero później rozszerzać produkt o bogatsze Behavioral Memory, aktywne
+   interwencje coacha, Bonus/nagrody oraz warstwy Gabawersum, questów i
+   alternatywnego użytkownika.
+
+Najbliższy krok techniczny to commit/push builda 5, natywny IPA i sprawdzenie
+poprawionego pola kodu na iPhonie. Nie wymaga to zmiany wdrożonego Workera.

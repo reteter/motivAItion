@@ -1,5 +1,12 @@
 import { useState } from 'react';
-import { StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  KeyboardAvoidingView,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 
 import { useAppStore } from '../store/AppStore';
 import { Body, Button, Card, Eyebrow, Page, Title, TopBar } from '../ui/components';
@@ -23,14 +30,24 @@ export function CoachSettingsScreen({ onBack }: { onBack: () => void }) {
     connectRemoteCoach,
   } = useAppStore();
   const [accessCode, setAccessCode] = useState('');
+  const [showAccessCode, setShowAccessCode] = useState(false);
   const coach = state.remoteCoach;
   const enabled = coach.mode === 'enabled';
   const connected = enabled && coach.installationStatus === 'active';
   const busy = coachRequestStatus === 'loading';
   const lastProposal = coach.proposals[0];
+  const accessCodeLength = accessCode.replace(/\s/g, '').length;
+
+  const submitAccessCode = () => {
+    if (busy || !remoteCoachConfigured || accessCodeLength !== 43) return;
+    void connectRemoteCoach(accessCode).then((success) => {
+      if (success) setAccessCode('');
+    });
+  };
 
   return (
-    <Page>
+    <KeyboardAvoidingView behavior="padding" style={styles.screen}>
+      <Page>
       <TopBar
         title="AI coach"
         left={<Button label="Wróć" variant="quiet" onPress={onBack} />}
@@ -93,27 +110,53 @@ export function CoachSettingsScreen({ onBack }: { onBack: () => void }) {
               będzie dostępne po skonfigurowaniu adresu HTTPS.
             </Text>
           ) : null}
-          <TextInput
-            accessibilityLabel="Jednorazowy kod dostępu"
-            autoCapitalize="none"
-            autoCorrect={false}
-            spellCheck={false}
-            editable={!busy && remoteCoachConfigured}
-            onChangeText={setAccessCode}
-            placeholder="Kod dostępu"
-            placeholderTextColor={colors.inkMuted}
-            secureTextEntry
-            style={styles.input}
-            value={accessCode}
-          />
+          <Text style={styles.inputHint}>
+            Kod rozróżnia wielkie i małe litery. Możesz go wkleić lub odsłonić podczas
+            ręcznego wpisywania. Spacje są pomijane. Wymagane są 43 znaki.
+          </Text>
+          <View style={styles.inputRow}>
+            <TextInput
+              accessibilityLabel="Jednorazowy kod dostępu"
+              autoCapitalize="none"
+              autoCorrect={false}
+              clearButtonMode="while-editing"
+              editable={!busy && remoteCoachConfigured}
+              keyboardType="ascii-capable"
+              onChangeText={setAccessCode}
+              onSubmitEditing={submitAccessCode}
+              placeholder="Kod dostępu"
+              placeholderTextColor={colors.inkMuted}
+              returnKeyType="done"
+              secureTextEntry={!showAccessCode}
+              spellCheck={false}
+              style={styles.input}
+              textContentType="none"
+              value={accessCode}
+            />
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={showAccessCode ? 'Ukryj kod dostępu' : 'Pokaż kod dostępu'}
+              accessibilityState={{ expanded: showAccessCode }}
+              disabled={busy}
+              hitSlop={8}
+              onPress={() => setShowAccessCode((visible) => !visible)}
+              style={({ pressed }) => [
+                styles.visibilityButton,
+                pressed && styles.visibilityButtonPressed,
+              ]}
+            >
+              <Text style={styles.visibilityButtonText}>
+                {showAccessCode ? 'Ukryj' : 'Pokaż'}
+              </Text>
+            </Pressable>
+          </View>
+          <Text style={styles.characterCount} accessibilityLiveRegion="polite">
+            {accessCodeLength} / 43 znaków
+          </Text>
           <Button
             label={busy ? 'Łączę…' : 'Połącz instalację'}
-            disabled={busy || !remoteCoachConfigured || !accessCode.trim()}
-            onPress={() => {
-              void connectRemoteCoach(accessCode).then((success) => {
-                if (success) setAccessCode('');
-              });
-            }}
+            disabled={busy || !remoteCoachConfigured || accessCodeLength !== 43}
+            onPress={submitAccessCode}
           />
         </Card>
       ) : null}
@@ -159,11 +202,13 @@ export function CoachSettingsScreen({ onBack }: { onBack: () => void }) {
           onPress={() => void setRemoteCoachConsent(false)}
         />
       ) : null}
-    </Page>
+      </Page>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
+  screen: { flex: 1 },
   cardTitle: { color: colors.ink, fontSize: 18, fontWeight: '800' },
   cardMeta: { color: colors.inkMuted, fontSize: 13, lineHeight: 19 },
   listRow: { flexDirection: 'row', gap: spacing.sm },
@@ -175,16 +220,34 @@ const styles = StyleSheet.create({
     lineHeight: 19,
     fontWeight: '700',
   },
-  input: {
-    minHeight: 54,
+  inputHint: { color: colors.inkMuted, fontSize: 13, lineHeight: 19 },
+  inputRow: {
+    minHeight: 58,
+    flexDirection: 'row',
+    alignItems: 'center',
     borderWidth: 1,
     borderColor: colors.line,
     borderRadius: radius.sm,
     backgroundColor: colors.surface,
+  },
+  input: {
+    flex: 1,
+    minHeight: 54,
     color: colors.ink,
-    fontSize: 17,
+    fontFamily: 'Menlo',
+    fontSize: 16,
+    letterSpacing: 0.5,
+    paddingLeft: spacing.md,
+    paddingRight: spacing.sm,
+  },
+  visibilityButton: {
+    minHeight: 44,
+    justifyContent: 'center',
     paddingHorizontal: spacing.md,
   },
+  visibilityButtonPressed: { opacity: 0.6 },
+  visibilityButtonText: { color: colors.accentDark, fontSize: 14, fontWeight: '800' },
+  characterCount: { color: colors.inkMuted, fontSize: 12, textAlign: 'right' },
   warning: { color: colors.warning, fontSize: 14, lineHeight: 20 },
   status: { color: colors.progress, fontSize: 14, lineHeight: 20 },
 });
