@@ -4,7 +4,23 @@ Mobile-first, iOS-only training app with an active adaptive coach. The first
 vertical slice tests one loop: a low-friction plan should make a real workout
 more likely to happen and to be repeated.
 
-## What works in M1
+## Project status
+
+Milestone 1 is complete. The full single-session loop works on an iPhone through
+Expo Go and the unsigned physical-device IPA is built by GitHub Actions. The
+[verified iOS build](https://github.com/reteter/motivAItion/actions/runs/31652514043)
+publishes the `motivaition-ios-unsigned` artifact.
+
+The coach currently runs locally from deterministic rules. It does **not** call a
+model API and there is no API key, backend or cloud sync. This is intentional:
+the application owns and validates all state changes, while a future model
+adapter will only be allowed to propose controlled actions.
+
+Current implementation details, verification evidence and known limitations are
+tracked in [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md). The next approved
+vertical slice is [docs/MILESTONE_2.md](docs/MILESTONE_2.md).
+
+## What works in Milestone 1
 
 - conversational onboarding and a conservative baseline;
 - versioned training Protocol generated from the user's current ability;
@@ -19,6 +35,10 @@ The coach adapter is intentionally local in M1. There is no model API key in the
 mobile client, no backend, no EAS and no analytics. Domain actions and their
 validation are separated from React Native so a remote AI adapter can propose the
 same controlled actions later without becoming the source of truth.
+
+Not implemented yet: explicit workout dates, missed/skipped/rescheduled session
+states, reminders, Consistency 7/30, a remote AI adapter, backend, characters,
+quests or social systems.
 
 ## Local development on Windows 11
 
@@ -66,3 +86,9 @@ src/ui           reusable visual primitives
 
 Generated `ios` and `android` directories, build output, IPA files and signing
 material are intentionally excluded from Git.
+
+## Product documentation
+
+- [Product specification](docs/PRODUCT_SPEC.md)
+- [Current project state](docs/PROJECT_STATUS.md)
+- [Milestone 2 plan](docs/MILESTONE_2.md)

@@ -1,5 +1,11 @@
 # PRODUCT_SPEC.md — AI Motivation & Training Coach
 
+> **Stan realizacji — 2026-08-13:** Milestone 1 został dostarczony i zweryfikowany
+> na fizycznym iPhonie oraz przez natywny build GitHub Actions. Szczegóły bieżącej
+> implementacji są w [PROJECT_STATUS.md](PROJECT_STATUS.md), a plan następnego
+> pionowego slice'a w [MILESTONE_2.md](MILESTONE_2.md). Ta specyfikacja pozostaje
+> dokumentem docelowego produktu, nie opisem wszystkich już dostępnych funkcji.
+
 ## 1. Cel projektu
 
 Budujemy mobilną aplikację pomagającą użytkownikowi regularnie realizować cele, których wykonanie wymaga motywacji, konsekwencji i dopingu.
@@ -612,7 +618,12 @@ Nie implementować w pierwszym MVP.
 
 ---
 
-# 22. Pierwszy MVP
+# 22. Pierwszy MVP — Milestone 1
+
+**Status:** dostarczony. Aplikacja realizuje pełną pętlę pojedynczej sesji. Coach
+jest obecnie lokalnym, deterministycznym adapterem i nie korzysta z API modelu.
+Dokładne różnice między specyfikacją a implementacją opisuje
+[PROJECT_STATUS.md](PROJECT_STATUS.md).
 
 Pierwszy działający pionowy slice powinien dotyczyć wyłącznie treningu.
 
@@ -835,6 +846,11 @@ Pierwszy MVP powinien odpowiedzieć na jedno pytanie:
 > Czy aplikacja z adaptacyjnym planem, bardzo niskim progiem rozpoczęcia, feedbackiem i aktywnym coachem zwiększa prawdopodobieństwo regularnego wykonywania treningów?
 
 Jeżeli odpowiedź będzie pozytywna, system można rozszerzać na kolejne rodzaje celów.
+
+Milestone 1 pozwala sprawdzić użyteczność pojedynczego treningu. Nie wystarcza
+jeszcze do pomiaru regularności, ponieważ nie zapisuje jawnie zaplanowanych,
+przełożonych i pominiętych sesji. Milestone 2 ma domknąć tę tygodniową pętlę
+realizacji przed dodaniem prawdziwego modelu AI.
 
 ---
 
