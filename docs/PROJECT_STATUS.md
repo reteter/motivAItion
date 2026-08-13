@@ -2,7 +2,8 @@
 
 - Aktualność dokumentu: **2026-08-13**
 - Baseline wdrożeniowy: **Milestone 2 / build number 2**
-- Status: **implementacja, niezależne review i natywny build zakończone; test urządzeniowy AC8 w toku**
+- Stan roboczy: **Milestone 3 / build number 3, lokalna implementacja bez deploymentu**
+- Status: **M3 przechodzi testy lokalne; realny model, native CI i test urządzeniowy są otwarte**
 
 ## Aktualny vertical slice
 
@@ -42,9 +43,11 @@ Consistency 7/30 liczy `completed / planned`. Standard i Minimum są wykonaniem,
 `skipped` oraz `missed` pozostają w mianowniku, a źródła `rescheduled` są
 pomijane. Dni odpoczynku nie są planowanymi occurrences i nie zaniżają wyniku.
 
-## Recovery i coach
+## Recovery i bounded AI coach
 
-Coach nadal **nie łączy się z API modelu**. Lokalny deterministyczny adapter może
+W zweryfikowanym buildzie M2 coach nadal nie łączy się z API modelu. Aktualny kod
+M3 ma remote port i backend adapter, ale bez wdrożonego endpointu nadal działa
+wyłącznie lokalny fallback. Deterministyczny adapter może
 wyłącznie wykonywać zamknięte `CoachAction`, między innymi:
 
 - wybrać Minimum dla konkretnego occurrence;
@@ -58,6 +61,16 @@ Standard. Wybór jest zapisywany jako obserwacja, a aplikacja nie generuje kilku
 zaległych Workoutów do nadrobienia. Powód `pain_or_limitation` sam w sobie nigdy
 nie zwiększa trudności.
 
+M3 dodaje minimalny `CoachContextV1`, jedną propozycję z expiry, jawne
+`Zastosuj / Nie teraz`, źródło remote/local oraz zapis późniejszego wyniku.
+Kontekst nie zawiera surowego Goal, `limitations`, notatek, tokenu ani pełnej
+historii. Przy sygnale bólu lista dozwolonych zmian usuwa każdą progresję.
+
+Backend z [ADR-001](ADR_001_M3_COACH_BACKEND.md) wymaga jednorazowego kodu,
+wydaje losowy token instalacji, przechowuje wyłącznie jego hash i egzekwuje
+dzienne limity requestów/tokenów. Sekret OpenAI i model są wyłącznie konfiguracją
+serwera. Worker nie został jeszcze wdrożony.
+
 ## Przypomnienia lokalne
 
 `src/notifications` zawiera port i adapter `expo-notifications`; domena nie
@@ -66,15 +79,42 @@ systemową i planuje maksymalnie jedno przypomnienie dla najbliższej przyszłej
 sesji. Zmiana, przełożenie albo ukończenie anuluje nieaktualny identyfikator.
 Odmowa uprawnień nie blokuje harmonogramu ani treningów.
 
-Build number został zwiększony do `2`, a bundle identifier pozostaje
+Zweryfikowany build M2 ma numer `2`. Kod M3 zwiększa numer do `3`, a bundle identifier pozostaje
 `com.jakub.motivaition`, aby aktualizacja przez Sideloadly mogła zachować dane.
 
 ## Persistence i migracja
 
-Stan ma `schemaVersion: 2`, ale zachowuje istniejący klucz AsyncStorage
+Stan M3 ma `schemaVersion: 3`, ale zachowuje istniejący klucz AsyncStorage
 `@motivaition/app-state/v1`, aby odnaleźć instalację M1. Migracja v1 → v2 zachowuje
 profil, baseline, wersje Protocolu, Workout history, observations i XP, a dla
-historycznych treningów tworzy completed occurrences.
+historycznych treningów tworzy completed occurrences. Migracja v2 → v3 dodaje
+wyłącznie pusty, domyślnie niezaakceptowany stan remote coacha.
+
+Token instalacji nie trafia do AppState ani AsyncStorage. Przechowuje go
+`expo-secure-store`; lokalna historia propozycji zawiera tylko proposal,
+źródło, decyzję, metadane i ewentualny wynik occurrence.
+
+## Weryfikacja M3 lokalnie
+
+- `npm run typecheck` — PASS;
+- `npm run test:domain` — PASS, w tym 20/20 fixtures i 100% safety fixtures;
+- `npm run test:backend` — PASS: atomowy one-time code, enrollment limit,
+  transakcyjny auth/quota/revocation, telemetry i strict tool;
+- timeout, offline i semantycznie błędna propozycja przechodzą na local fallback;
+- decision/outcome telemetry używa trwałego bounded outboxu z backoffem,
+  deduplikacją i 5 próbami; opt-out natychmiast anuluje requesty, czyści kolejkę
+  i blokuje późniejsze odtworzenie porzuconych zdarzeń;
+- dodatkowe pola, obcy occurrence, forbidden action, expiry i drugie apply są odrzucane;
+- apply nie może przyznać XP, dopisać completion ani zmienić Goal;
+- `npm run check:expo` — PASS, build number 3 i oba config plugins;
+- `npx expo install --check` — PASS;
+- `npx expo-doctor` — 18/18 checks;
+- `npx expo export --platform ios --output-dir dist` — PASS, 740 modułów,
+  Hermes bundle 2.1 MB;
+- składnia workflow, secret scan i `git diff --check` — PASS.
+
+Wciąż wymagane są natywny workflow build 3, deployment backendu, prawdziwy model
+eval i iPhone E2E.
 
 Nieznany albo uszkodzony format jest odrzucany. Po błędzie odczytu stan domyślny
 nie może przejść do zwykłego flow ani zostać zapisany. Osobny ekran pozwala
@@ -133,6 +173,7 @@ używa skonfigurowanego Node 20.
 - React Native `0.81.5`, React `19.1.0`, TypeScript `5.9.3` strict;
 - AsyncStorage `2.2.0`;
 - `expo-notifications` `0.32.17`;
+- `expo-secure-store` zgodny z Expo SDK 54;
 - iOS only, Continuous Native Generation;
 - GitHub Actions `macos-26`, Xcode 26.6, build bez code signing.
 
@@ -143,21 +184,24 @@ niezweryfikowany upgrade głównego toolchainu Expo.
 ## Mapa kodu
 
 ```text
-src/domain/types.ts          modele v2 i CoachAction
+src/domain/types.ts          modele v3, CoachProposal i bounded actions
 src/domain/schedule.ts       daty, occurrences, Consistency i recovery
-src/domain/migration.ts      bezpieczna migracja v1 → v2
+src/domain/migration.ts      bezpieczna migracja v1 → v2 → v3
 src/domain/persistence.ts    reguła blokady zapisu przed bezpieczną hydratacją
 src/domain/protocol.ts       generowanie i wersjonowanie Protocolu
 src/domain/coach.ts          walidacja actions i adaptacja
 src/store/AppStore.tsx       hydratacja, persistence i synchronizacja reminderów
 src/notifications/           port oraz lokalny adapter iOS
-src/screens/                 schedule, dashboard, workout, completion i historia
-tests/domain.test.ts         deterministyczne regresje domeny i migracji
+src/coach/                   kontekst, contracts, fallback, remote port i service
+src/screens/                 schedule, dashboard, AI opt-in, workout i historia
+backend/                     Worker, auth/quota, Responses API i threat boundary
+tests/coach*.ts              20 fixtures, privacy, safety i failure modes
+tests/backend.test.ts        kontrakt auth/tool/quota/revocation
 ```
 
 ## Następny krok
 
-Najpierw należy zamknąć pozostałe AC8: test Expo Go, lokalne przypomnienie i
-instalacja aktualizacyjna IPA. Równolegle można przygotować kontrakty i fixture
-evals dla [M3 — Bounded AI Coach](MILESTONE_3.md). Włączenie zdalnego modelu dla
-użytkownika wymaga opt-in, bezpiecznego proxy i pozytywnego wyniku dogfood M2.
+Najbliższa ścieżka to pełne lokalne gate’y M3, review diffu i — po zgodzie na
+publikację — natywny build 3. Równolegle trzeba zamknąć urządzeniowe AC8 M2.
+Włączenie prawdziwego modelu wymaga utworzenia Workera/Durable Object, ustawienia sekretów,
+real-model evals oraz publicznego `EXPO_PUBLIC_COACH_API_URL` w buildzie.

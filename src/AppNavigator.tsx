@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { CompletionResult, UserProfile } from './domain/types';
 import { BaselineScreen } from './screens/BaselineScreen';
 import { CompletionScreen } from './screens/CompletionScreen';
+import { CoachSettingsScreen } from './screens/CoachSettingsScreen';
 import { DashboardScreen } from './screens/DashboardScreen';
 import { DataRecoveryScreen } from './screens/DataRecoveryScreen';
 import { HistoryScreen } from './screens/HistoryScreen';
@@ -12,7 +13,7 @@ import { WorkoutScreen } from './screens/WorkoutScreen';
 import { useAppStore } from './store/AppStore';
 import { LoadingScreen } from './ui/components';
 
-type Route = 'dashboard' | 'workout' | 'history' | 'completion' | 'schedule';
+type Route = 'dashboard' | 'workout' | 'history' | 'completion' | 'schedule' | 'coach';
 
 function completeDraft(draft: Partial<UserProfile>) {
   return Boolean(
@@ -64,6 +65,10 @@ export function AppNavigator() {
     return <HistoryScreen onBack={() => setRoute('dashboard')} />;
   }
 
+  if (route === 'coach') {
+    return <CoachSettingsScreen onBack={() => setRoute('dashboard')} />;
+  }
+
   if (route === 'completion' && completion) {
     return (
       <CompletionScreen
@@ -81,6 +86,7 @@ export function AppNavigator() {
       onStart={() => setRoute('workout')}
       onHistory={() => setRoute('history')}
       onSchedule={() => setRoute('schedule')}
+      onCoach={() => setRoute('coach')}
     />
   );
 }

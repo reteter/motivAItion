@@ -7,5 +7,15 @@
     "outDir": ".domain-test-build",
     "noEmit": false
   },
-  "include": ["src/domain/**/*.ts", "tests/**/*.ts"]
+  "include": [
+    "src/domain/**/*.ts",
+    "src/coach/contracts.ts",
+    "src/coach/context.ts",
+    "src/coach/proposals.ts",
+    "src/coach/service.ts",
+    "src/coach/telemetry.ts",
+    "tests/domain.test.ts",
+    "tests/coach-fixtures.ts",
+    "tests/coach.test.ts"
+  ]
 }

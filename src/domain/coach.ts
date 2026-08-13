@@ -8,13 +8,14 @@ import {
   Workout,
 } from './types';
 import { currentProtocol } from './protocol';
+import { workoutFromProtocol } from './protocol';
 import {
   rescheduleOccurrence,
   skipOccurrence,
   startOccurrence,
 } from './schedule';
 
-const targetLimits: Record<ProtocolExercise['id'], [number, number]> = {
+export const coachTargetLimits: Record<ProtocolExercise['id'], [number, number]> = {
   pushups: [1, 20],
   squats: [3, 30],
   plank: [5, 60],
@@ -39,7 +40,7 @@ export function validateCoachAction(state: AppState, action: CoachAction): boole
       );
       if (!exercise || !Number.isInteger(change.targetDelta)) return false;
       const nextTarget = exercise.target + change.targetDelta;
-      const [min, max] = targetLimits[change.exerciseId];
+      const [min, max] = coachTargetLimits[change.exerciseId];
       return nextTarget >= min && nextTarget <= max;
     });
   }
@@ -48,7 +49,10 @@ export function validateCoachAction(state: AppState, action: CoachAction): boole
     (candidate) => candidate.id === action.occurrenceId,
   );
   if (!occurrence) return false;
-  if (action.type === 'recommend_recovery_workout') {
+  if (
+    action.type === 'recommend_recovery_workout' ||
+    action.type === 'recommend_minimum_workout'
+  ) {
     return occurrence.status === 'scheduled';
   }
   return occurrence.status === 'scheduled';
@@ -80,6 +84,16 @@ export function applyCoachAction(
       ),
     };
   }
+  if (action.type === 'recommend_minimum_workout') {
+    return {
+      ...state,
+      occurrences: state.occurrences.map((occurrence) =>
+        occurrence.id === action.occurrenceId
+          ? { ...occurrence, recommendedVariant: 'minimum' }
+          : occurrence,
+      ),
+    };
+  }
   if (action.type === 'add_behavioral_observation') {
     return {
       ...state,
@@ -100,7 +114,10 @@ export function applyCoachAction(
     ...protocol,
     version: protocol.version + 1,
     createdAt: now.toISOString(),
-    reason: 'Cele serii dopasowane po ostatnim feedbacku.',
+    reason:
+      action.reason === 'ai_proposal'
+        ? 'Cele serii zmienione po zaakceptowanej propozycji AI coacha.'
+        : 'Cele serii dopasowane po ostatnim feedbacku.',
     exercises: protocol.exercises.map((exercise) => {
       const change = action.changes.find(
         (candidate) => candidate.exerciseId === exercise.id,
@@ -110,13 +127,39 @@ export function applyCoachAction(
             ...exercise,
             target: clamp(
               exercise.target + change.targetDelta,
-              targetLimits[exercise.id],
+              coachTargetLimits[exercise.id],
             ),
           }
         : exercise;
     }),
   };
-  return { ...state, protocols: [...state.protocols, nextProtocol] };
+  const rebasedTodayWorkout =
+    state.todayWorkout?.status === 'planned' &&
+    state.todayWorkout.occurrenceId &&
+    state.occurrences.some(
+      (occurrence) =>
+        occurrence.id === state.todayWorkout?.occurrenceId &&
+        occurrence.status === 'scheduled',
+    )
+      ? {
+          ...workoutFromProtocol(
+            nextProtocol,
+            new Date(state.todayWorkout.plannedAt),
+            state.todayWorkout.occurrenceId,
+          ),
+          id: state.todayWorkout.id,
+        }
+      : state.todayWorkout;
+  return {
+    ...state,
+    protocols: [...state.protocols, nextProtocol],
+    todayWorkout: rebasedTodayWorkout,
+    occurrences: state.occurrences.map((occurrence) =>
+      occurrence.status === 'scheduled'
+        ? { ...occurrence, protocolVersion: nextProtocol.version }
+        : occurrence,
+    ),
+  };
 }
 
 function feedbackFor(workout: Workout, exerciseId: ProtocolExercise['id']) {
@@ -180,7 +223,7 @@ export function proposePostWorkoutActions(
       (candidate) => candidate.id === change.exerciseId,
     );
     if (!exercise) return false;
-    const [min, max] = targetLimits[change.exerciseId];
+    const [min, max] = coachTargetLimits[change.exerciseId];
     const nextTarget = exercise.target + change.targetDelta;
     return nextTarget >= min && nextTarget <= max;
   });

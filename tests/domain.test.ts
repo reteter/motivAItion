@@ -1,5 +1,9 @@
 import { applyCoachAction, completeWorkout } from '../src/domain/coach';
-import { migrateV1ToV2, parseAndMigrateState } from '../src/domain/migration';
+import {
+  migrateV1ToV2,
+  migrateV2ToV3,
+  parseAndMigrateState,
+} from '../src/domain/migration';
 import { shouldPersistState } from '../src/domain/persistence';
 import {
   createInitialProtocol,
@@ -285,8 +289,21 @@ assert(
   'Migrated history should receive objective completed occurrences.',
 );
 assert(
-  parseAndMigrateState(migrated).schemaVersion === 2,
-  'A migrated state should pass strict v2 validation on the next launch.',
+  parseAndMigrateState(migrated).schemaVersion === 3,
+  'A migrated M1 state should pass strict v3 validation on the next launch.',
+);
+const migratedV3 = migrateV2ToV3(migrated);
+assert(migratedV3.schemaVersion === 3, 'M2 state should migrate to schema v3.');
+assert(
+  migratedV3.remoteCoach.mode === 'not_decided' &&
+    migratedV3.remoteCoach.proposals.length === 0,
+  'M2 migration should initialize remote coach without changing prior data.',
+);
+assert(
+  migratedV3.history.length === migrated.history.length &&
+    migratedV3.progress.totalXp === migrated.progress.totalXp &&
+    migratedV3.profile?.goal === migrated.profile?.goal,
+  'M2 to M3 migration must preserve history, XP and Goal.',
 );
 
 let invalidRejected = false;
@@ -315,6 +332,13 @@ for (const invalidState of [
         scheduledAt: 'not-a-date',
       },
     ],
+  },
+  {
+    ...createInitialState(),
+    remoteCoach: {
+      ...createInitialState().remoteCoach,
+      unknownField: 'must be rejected',
+    },
   },
 ]) {
   let rejected = false;

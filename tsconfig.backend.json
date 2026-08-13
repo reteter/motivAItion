@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "module": "Node16",
+    "moduleResolution": "Node16",
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
+    "outDir": ".backend-test-build",
+    "rootDir": ".",
+    "noEmit": false,
+    "skipLibCheck": true
+  },
+  "include": [
+    "backend/**/*.ts",
+    "src/coach/context.ts",
+    "src/coach/contracts.ts",
+    "src/domain/**/*.ts",
+    "tests/backend.test.ts"
+  ]
+}

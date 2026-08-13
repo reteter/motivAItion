@@ -1,27 +1,29 @@
 # motivAItion
 
 Mobile-first, iOS-only training app with an active adaptive coach. The current
-vertical slice tests a weekly loop: a concrete schedule, low-friction choices
-and a calm recovery should make a real workout more likely to happen again.
+working branch adds the bounded M3 AI loop on top of the verified weekly M2
+flow: the model may propose one validated next step, but the application remains
+the only source of truth.
 
 ## Project status
 
 Milestone 2 is implemented, independently reviewed and passes local domain,
-Expo and native iOS gates. The first M2 [device build](https://github.com/reteter/motivAItion/actions/runs/31657121631)
+Expo and native iOS gates. Its [device build](https://github.com/reteter/motivAItion/actions/runs/31657121631)
 publishes build number 2 as `motivaition-ios-unsigned`. Notification delivery and
 the update path still need physical-iPhone validation before M2 is fully closed.
 
-The coach currently runs locally from deterministic rules. It does **not** call a
-model API and there is no API key, backend or cloud sync. This is intentional:
-the application owns and validates all state changes, while a future model
-adapter will only be allowed to propose controlled actions.
+M3 is implemented locally as build number 3: versioned minimal context, strict
+proposal validation, opt-in UX, Secure Store installation token, local fallback,
+20 fixture scenarios and a tested Cloudflare Worker backend adapter for OpenAI
+Responses API. The backend is **not deployed**, no OpenAI key is present, and no
+real model request or iPhone flow has been verified yet.
 
 Current implementation details, verification evidence and known limitations are
 tracked in [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md). M2 scope and device
-acceptance criteria are in [docs/MILESTONE_2.md](docs/MILESTONE_2.md). The next
-proposed slice is [docs/MILESTONE_3.md](docs/MILESTONE_3.md).
+acceptance criteria are in [docs/MILESTONE_2.md](docs/MILESTONE_2.md). M3 scope,
+evidence and remaining rollout work are in [docs/MILESTONE_3.md](docs/MILESTONE_3.md).
 
-## What works in Milestone 2
+## What works locally
 
 - conversational onboarding and a conservative baseline;
 - versioned training Protocol generated from the user's current ability;
@@ -41,14 +43,28 @@ proposed slice is [docs/MILESTONE_3.md](docs/MILESTONE_3.md).
   notification adapter;
 - strict, in-place migration from schema v1 to v2 without changing the
   AsyncStorage key, plus a recovery screen that blocks unsafe overwrites.
+- lossless schema v2 → v3 migration for local M3 proposal state;
+- explicit remote-AI consent and visible data categories;
+- `CoachContextV1` without raw goal, limitations or free-text notes;
+- one pending `CoachProposalV1`, with apply/reject, expiry, idempotency and later
+  occurrence outcome;
+- deterministic local fallback for missing token, timeout, offline and invalid
+  remote proposals;
+- install/revoke flow with the token held in `expo-secure-store` rather than
+  AsyncStorage;
+- portable Worker backend with an atomic one-time access code, enrollment limit,
+  hashed revocable tokens, transactional daily quotas, privacy-safe decision
+  telemetry and one strict Responses API tool.
+- persistent bounded telemetry delivery with backoff, deduplication and immediate opt-out
+  that cancels in-flight coach requests and prevents replay after re-enabling
+  cleanup.
 
-The coach adapter remains intentionally local through M2. There is no model API key in the
-mobile client, no backend, no EAS and no analytics. Domain actions and their
-validation are separated from React Native so a remote AI adapter can propose the
-same controlled actions later without becoming the source of truth.
-
-Not implemented yet: a remote AI adapter, backend, accounts/cloud sync,
-characters, quests or social systems.
+There is no model API key in the mobile client, no EAS and no third-party analytics.
+M3 has bounded first-party metadata telemetry for proposal decisions and outcomes.
+Remote
+AI becomes live only after deploying the Worker, setting its secrets, choosing a
+pinned model from real evals and building the app with the public HTTPS endpoint.
+Accounts/cloud sync, characters, quests and social systems remain out of scope.
 
 ## Local development on Windows 11
 
@@ -57,6 +73,7 @@ Requirements: Node.js 20 LTS, npm and Expo Go compatible with Expo SDK 54.
 ```powershell
 npm ci
 npm run typecheck
+npm test
 npm run check:expo
 npx expo install --check
 npx expo-doctor
@@ -76,7 +93,8 @@ for a physical iPhone with signing disabled and publishes:
 - GitHub artifact: `motivaition-ios-unsigned`
 - file after extracting the artifact: `motivaition-unsigned.ipa`
 
-The bundle identifier is `com.jakub.motivaition` and build number is `2`. Keep the
+The bundle identifier is `com.jakub.motivaition`. The verified M2 IPA is build 2;
+the current M3 source declares build number `3` and still requires native CI. Keep the
 bundle ID and the Apple ID used by Sideloadly stable across reinstalls to preserve
 local app data; increment the build number for later installable releases.
 
@@ -89,10 +107,12 @@ and trust the profile under `Settings > General > VPN & Device Management`.
 
 ```text
 src/domain       source-of-truth types, Protocol generation, validated coach actions
+src/coach        minimal context, proposal validation, fallback and remote port
 src/store        hydration and safe local persistence
 src/notifications local-reminder port and Expo iOS adapter
 src/screens      mobile interaction flow
 src/ui           reusable visual primitives
+backend          provider-isolated Worker handler, auth/quota and Responses adapter
 ```
 
 Generated `ios` and `android` directories, build output, IPA files and signing

@@ -116,7 +116,10 @@ export type BehavioralObservationKind =
   | 'recovery_minimum_accepted'
   | 'recovery_standard_chosen'
   | 'workout_skipped'
-  | 'workout_rescheduled';
+  | 'workout_rescheduled'
+  | 'time_pressure_pattern'
+  | 'low_adherence_pattern'
+  | 'minimum_helped_pattern';
 
 export interface BehavioralObservation {
   id: string;
@@ -140,6 +143,89 @@ export interface ReminderState {
   scheduledAt?: string;
 }
 
+export type CoachProposalRationaleCode =
+  | 'recovery_after_gap'
+  | 'low_recent_consistency'
+  | 'time_pressure_pattern'
+  | 'pain_requires_caution'
+  | 'positive_momentum'
+  | 'insufficient_evidence';
+
+export type BoundedCoachAction =
+  | {
+      type: 'recommend_minimum_workout';
+      occurrenceId: string;
+      reason: 'low_consistency' | 'time_pressure' | 'recovery';
+    }
+  | {
+      type: 'recommend_recovery_workout';
+      occurrenceId: string;
+    }
+  | {
+      type: 'modify_future_protocol';
+      reason: 'ai_proposal';
+      changes: Array<{
+        exerciseId: ProtocolExercise['id'];
+        targetDelta: number;
+        source: 'ai_caution' | 'ai_progression';
+      }>;
+    }
+  | {
+      type: 'add_behavioral_observation';
+      observation: Omit<BehavioralObservation, 'id' | 'createdAt'>;
+    };
+
+export interface CoachProposalV1 {
+  proposalId: string;
+  message: string;
+  rationaleCode: CoachProposalRationaleCode;
+  action: BoundedCoachAction | null;
+  expiresAt: string;
+  promptVersion: string;
+}
+
+export interface CoachProposalRecord extends CoachProposalV1 {
+  source: 'remote' | 'local';
+  requestId?: string;
+  receivedAt: string;
+  status: 'pending' | 'applied' | 'rejected' | 'expired';
+  decidedAt?: string;
+  outcomeOccurrenceId?: string;
+  outcomeStatus?: WorkoutOccurrenceStatus;
+  outcomeRecordedAt?: string;
+}
+
+export interface RemoteCoachRequestMetadata {
+  requestId: string;
+  requestedAt: string;
+  source: 'remote' | 'local';
+  resultCode: 'success' | 'fallback' | 'invalid_proposal';
+  latencyMs?: number;
+  promptVersion: string;
+  modelVersion?: string;
+  inputTokens?: number;
+  outputTokens?: number;
+}
+
+export interface RemoteCoachState {
+  mode: 'not_decided' | 'enabled' | 'disabled';
+  consentedAt?: string;
+  installationStatus: 'missing' | 'active' | 'revoked';
+  proposals: CoachProposalRecord[];
+  telemetryOutbox: Array<{
+    eventId: string;
+    proposalId: string;
+    requestId: string;
+    decision: 'applied' | 'rejected';
+    outcomeCode?: 'completed' | 'skipped' | 'missed' | 'rescheduled';
+    attempts: number;
+    createdAt: string;
+    nextAttemptAt?: string;
+  }>;
+  telemetrySettledEventIds: string[];
+  lastRequest?: RemoteCoachRequestMetadata;
+}
+
 export interface AppStateV1 {
   schemaVersion: 1;
   onboardingDraft: Partial<UserProfile>;
@@ -153,7 +239,7 @@ export interface AppStateV1 {
 }
 
 export interface AppState {
-  schemaVersion: 2;
+  schemaVersion: 3;
   onboardingDraft: Partial<UserProfile>;
   profile?: UserProfile;
   baseline?: Baseline;
@@ -165,9 +251,19 @@ export interface AppState {
   observations: BehavioralObservation[];
   progress: Progress;
   reminders: ReminderState;
+  remoteCoach: RemoteCoachState;
 }
 
+export type AppStateV2 = Omit<AppState, 'schemaVersion' | 'remoteCoach'> & {
+  schemaVersion: 2;
+};
+
 export type CoachAction =
+  | {
+      type: 'recommend_minimum_workout';
+      occurrenceId: string;
+      reason: 'low_consistency' | 'time_pressure' | 'recovery';
+    }
   | {
       type: 'choose_minimum_workout';
       occurrenceId: string;
@@ -189,11 +285,11 @@ export type CoachAction =
     }
   | {
       type: 'modify_future_protocol';
-      reason: 'workout_feedback';
+      reason: 'workout_feedback' | 'ai_proposal';
       changes: Array<{
         exerciseId: ProtocolExercise['id'];
         targetDelta: number;
-        source: 'hard' | 'easy';
+        source: 'hard' | 'easy' | 'ai_caution' | 'ai_progression';
       }>;
     }
   | {

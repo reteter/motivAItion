@@ -1,0 +1,16 @@
+name = "motivaition-coach"
+main = "backend/worker.ts"
+compatibility_date = "2026-08-13"
+
+[[durable_objects.bindings]]
+name = "COACH_COORDINATOR"
+class_name = "CoachCoordinator"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["CoachCoordinator"]
+
+[vars]
+PROMPT_VERSION = "m3-v1"
+MAX_REQUESTS_PER_DAY = "20"
+MAX_TOKENS_PER_DAY = "20000"

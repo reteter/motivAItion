@@ -11,6 +11,18 @@ import {
 } from 'react';
 
 import { applyCoachAction, completeWorkout } from '../domain/coach';
+import {
+  decideCoachProposal,
+  recordCoachProposalOutcomes,
+  storeCoachProposal,
+} from '../coach/proposals';
+import { remoteCoach as remoteCoachAdapter } from '../coach/remoteCoach';
+import { resolveCoachProposal } from '../coach/service';
+import {
+  markTelemetryAttemptFailed,
+  markTelemetryDelivered,
+  reconcileTelemetryOutbox,
+} from '../coach/telemetry';
 import { parseAndMigrateState } from '../domain/migration';
 import { HydrationStatus, shouldPersistState } from '../domain/persistence';
 import { createInitialProtocol, createInitialState } from '../domain/protocol';
@@ -41,6 +53,9 @@ interface AppStoreValue {
   state: AppState;
   hydrationStatus: HydrationStatus;
   persistenceMessage?: string;
+  coachRequestStatus: 'idle' | 'loading' | 'error';
+  coachRequestMessage?: string;
+  remoteCoachConfigured: boolean;
   retryHydration: () => void;
   startFreshAfterReadError: () => Promise<void>;
   updateOnboardingDraft: (draft: Partial<UserProfile>) => void;
@@ -60,6 +75,11 @@ interface AppStoreValue {
     feedback: SetFeedback,
   ) => void;
   finishWorkout: () => CompletionResult | undefined;
+  setRemoteCoachConsent: (enabled: boolean) => Promise<void>;
+  connectRemoteCoach: (accessCode: string) => Promise<boolean>;
+  requestCoachProposal: () => Promise<void>;
+  applyCoachProposal: (proposalId: string) => void;
+  rejectCoachProposal: (proposalId: string) => void;
 }
 
 const AppStoreContext = createContext<AppStoreValue | undefined>(undefined);
@@ -68,9 +88,17 @@ export function AppStoreProvider({ children }: PropsWithChildren) {
   const [state, setState] = useState<AppState>(createInitialState);
   const [hydrationStatus, setHydrationStatus] = useState<HydrationStatus>('loading');
   const [persistenceMessage, setPersistenceMessage] = useState<string>();
+  const [coachRequestStatus, setCoachRequestStatus] = useState<
+    AppStoreValue['coachRequestStatus']
+  >('idle');
+  const [coachRequestMessage, setCoachRequestMessage] = useState<string>();
   const [hydrationAttempt, setHydrationAttempt] = useState(0);
+  const [telemetryRetryTick, setTelemetryRetryTick] = useState(0);
   const dirtyRef = useRef(false);
   const unreadablePayloadRef = useRef<string | null>(null);
+  const telemetryInFlightRef = useRef(new Set<string>());
+  const remoteRequestsAllowedRef = useRef(false);
+  const remoteRequestGenerationRef = useRef(0);
 
   useEffect(() => {
     let active = true;
@@ -82,10 +110,16 @@ export function AppStoreProvider({ children }: PropsWithChildren) {
         if (serialized) {
           const parsed: unknown = JSON.parse(serialized);
           const hydrated = parseAndMigrateState(parsed);
-          if ((parsed as { schemaVersion?: unknown }).schemaVersion === 1) {
+          const reconciled = reconcileTelemetryOutbox(hydrated);
+          remoteRequestsAllowedRef.current =
+            reconciled.remoteCoach.mode === 'enabled';
+          if (
+            (parsed as { schemaVersion?: unknown }).schemaVersion !== 3 ||
+            reconciled !== hydrated
+          ) {
             dirtyRef.current = true;
           }
-          setState(hydrated);
+          setState(reconciled);
         }
         unreadablePayloadRef.current = null;
         setPersistenceMessage(undefined);
@@ -146,11 +180,87 @@ export function AppStoreProvider({ children }: PropsWithChildren) {
     }
   }, [hydrationStatus]);
 
-  const mutate = useCallback((recipe: (current: AppState) => AppState) => {
+  const mutate = useCallback(
+    (recipe: (current: AppState) => AppState) => {
+      if (hydrationStatus !== 'ready') return;
+      dirtyRef.current = true;
+      setState((current) =>
+        reconcileTelemetryOutbox(recordCoachProposalOutcomes(recipe(current))),
+      );
+    },
+    [hydrationStatus],
+  );
+
+  useEffect(() => {
     if (hydrationStatus !== 'ready') return;
-    dirtyRef.current = true;
-    setState(recipe);
-  }, [hydrationStatus]);
+    let active = true;
+    remoteCoachAdapter
+      .hasInstallation()
+      .then((installed) => {
+        if (!active) return;
+        mutate((current) => {
+          const installationStatus = installed ? 'active' : 'missing';
+          return current.remoteCoach.installationStatus === installationStatus
+            ? current
+            : {
+                ...current,
+                remoteCoach: { ...current.remoteCoach, installationStatus },
+              };
+        });
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [hydrationStatus, mutate]);
+
+  useEffect(() => {
+    if (
+      hydrationStatus !== 'ready' ||
+      state.remoteCoach.mode !== 'enabled' ||
+      state.remoteCoach.installationStatus !== 'active' ||
+      !remoteRequestsAllowedRef.current ||
+      !remoteCoachAdapter.isConfigured()
+    ) return;
+    const now = Date.now();
+    let nearestRetryAt: number | undefined;
+    for (const event of state.remoteCoach.telemetryOutbox) {
+      const retryAt = event.nextAttemptAt ? Date.parse(event.nextAttemptAt) : 0;
+      if (retryAt > now) {
+        nearestRetryAt = Math.min(nearestRetryAt ?? retryAt, retryAt);
+        continue;
+      }
+      if (telemetryInFlightRef.current.has(event.eventId)) continue;
+      const requestGeneration = remoteRequestGenerationRef.current;
+      telemetryInFlightRef.current.add(event.eventId);
+      void remoteCoachAdapter.recordEvent({
+        proposalId: event.proposalId,
+        requestId: event.requestId,
+        decision: event.decision,
+        ...(event.outcomeCode ? { outcomeCode: event.outcomeCode } : {}),
+      }).then(() => {
+        telemetryInFlightRef.current.delete(event.eventId);
+        if (
+          !remoteRequestsAllowedRef.current ||
+          requestGeneration !== remoteRequestGenerationRef.current
+        ) return;
+        mutate((current) => markTelemetryDelivered(current, event.eventId));
+      }).catch(() => {
+        telemetryInFlightRef.current.delete(event.eventId);
+        if (
+          !remoteRequestsAllowedRef.current ||
+          requestGeneration !== remoteRequestGenerationRef.current
+        ) return;
+        mutate((current) => markTelemetryAttemptFailed(current, event.eventId));
+      });
+    }
+    if (nearestRetryAt === undefined) return;
+    const timer = setTimeout(
+      () => setTelemetryRetryTick((current) => current + 1),
+      Math.max(1_000, nearestRetryAt - now),
+    );
+    return () => clearTimeout(timer);
+  }, [hydrationStatus, mutate, state.remoteCoach, telemetryRetryTick]);
 
   useEffect(() => {
     if (hydrationStatus !== 'ready') return;
@@ -363,15 +473,202 @@ export function AppStoreProvider({ children }: PropsWithChildren) {
     const result = completeWorkout(state);
     if (!result) return undefined;
     dirtyRef.current = true;
-    setState(result.state);
+    setState(reconcileTelemetryOutbox(recordCoachProposalOutcomes(result.state)));
     return result;
   }, [state]);
+
+  const setRemoteCoachConsent = useCallback(
+    async (enabled: boolean) => {
+      setCoachRequestStatus('loading');
+      setCoachRequestMessage(undefined);
+      if (!enabled) {
+        remoteRequestsAllowedRef.current = false;
+        remoteRequestGenerationRef.current += 1;
+        remoteCoachAdapter.cancelPending();
+        telemetryInFlightRef.current.clear();
+        mutate((current) => ({
+          ...current,
+          remoteCoach: {
+            ...current.remoteCoach,
+            mode: 'disabled',
+          },
+        }));
+        let revoked = false;
+        try {
+          await remoteCoachAdapter.revoke();
+          revoked = true;
+        } catch (error) {
+          setCoachRequestStatus('error');
+          setCoachRequestMessage(
+            `Zdalny coach jest wyłączony lokalnie, ale tokenu nie udało się odwołać: ${
+              error instanceof Error ? error.message : 'błąd połączenia'
+            }`,
+          );
+        }
+        mutate((current) => ({
+          ...current,
+          remoteCoach: {
+            ...current.remoteCoach,
+            installationStatus: revoked
+              ? 'revoked'
+              : current.remoteCoach.installationStatus,
+          },
+        }));
+        if (revoked) {
+          setCoachRequestMessage('Zdalny AI coach jest wyłączony, a token został odwołany.');
+        }
+      } else {
+        const installed = await remoteCoachAdapter.hasInstallation().catch(() => false);
+        remoteRequestsAllowedRef.current = true;
+        remoteRequestGenerationRef.current += 1;
+        mutate((current) => ({
+          ...current,
+          remoteCoach: {
+            ...current.remoteCoach,
+            mode: 'enabled',
+            consentedAt: new Date().toISOString(),
+            installationStatus: installed ? 'active' : 'missing',
+          },
+        }));
+      }
+      setCoachRequestStatus((current) => (current === 'error' ? current : 'idle'));
+    },
+    [mutate],
+  );
+
+  const connectRemoteCoach = useCallback(
+    async (accessCode: string) => {
+      if (!accessCode.trim()) {
+        setCoachRequestStatus('error');
+        setCoachRequestMessage('Wpisz jednorazowy kod dostępu.');
+        return false;
+      }
+      setCoachRequestStatus('loading');
+      setCoachRequestMessage(undefined);
+      const requestGeneration = remoteRequestGenerationRef.current;
+      try {
+        await remoteCoachAdapter.enroll(accessCode);
+        if (
+          !remoteRequestsAllowedRef.current ||
+          requestGeneration !== remoteRequestGenerationRef.current
+        ) return false;
+        mutate((current) => ({
+          ...current,
+          remoteCoach: {
+            ...current.remoteCoach,
+            mode: 'enabled',
+            consentedAt: current.remoteCoach.consentedAt ?? new Date().toISOString(),
+            installationStatus: 'active',
+          },
+        }));
+        setCoachRequestStatus('idle');
+        setCoachRequestMessage('Instalacja jest połączona ze zdalnym AI coachem.');
+        return true;
+      } catch (error) {
+        if (
+          !remoteRequestsAllowedRef.current ||
+          requestGeneration !== remoteRequestGenerationRef.current
+        ) return false;
+        setCoachRequestStatus('error');
+        setCoachRequestMessage(
+          error instanceof Error ? error.message : 'Nie udało się aktywować AI coacha.',
+        );
+        return false;
+      }
+    },
+    [mutate],
+  );
+
+  const requestCoachProposal = useCallback(async () => {
+    if (
+      state.remoteCoach.mode !== 'enabled' ||
+      !remoteRequestsAllowedRef.current ||
+      coachRequestStatus === 'loading'
+    ) return;
+    setCoachRequestStatus('loading');
+    setCoachRequestMessage(undefined);
+    const requestGeneration = remoteRequestGenerationRef.current;
+    const now = new Date();
+    const startedAt = Date.now();
+    const resolution = await resolveCoachProposal(
+      state,
+      state.remoteCoach.installationStatus === 'active'
+        ? remoteCoachAdapter
+        : undefined,
+      now,
+    );
+    if (
+      !remoteRequestsAllowedRef.current ||
+      requestGeneration !== remoteRequestGenerationRef.current
+    ) return;
+    if (
+      state.remoteCoach.installationStatus === 'active' &&
+      (resolution.failureCode === 'unauthorized' ||
+        resolution.failureCode === 'not_enrolled')
+    ) {
+      mutate((current) => ({
+        ...current,
+        remoteCoach: { ...current.remoteCoach, installationStatus: 'revoked' },
+      }));
+    }
+    if (resolution.source === 'local') {
+      setCoachRequestMessage('Brak aktywnego tokenu — pokazuję bezpieczny fallback lokalny.');
+      if (state.remoteCoach.installationStatus === 'active') {
+        setCoachRequestMessage(
+          resolution.resultCode === 'invalid_proposal'
+            ? 'Zdalna propozycja nie przeszła walidacji — pokazuję bezpieczny fallback lokalny.'
+            : 'Zdalny coach jest niedostępny — pokazuję bezpieczny fallback lokalny.',
+        );
+      }
+    }
+
+    mutate((current) => {
+      const withProposal = storeCoachProposal(
+        current,
+        resolution.proposal,
+        resolution.source,
+        now,
+        resolution.source === 'remote' ? resolution.metadata.requestId : undefined,
+      );
+      const accepted = withProposal !== current;
+      return {
+        ...withProposal,
+        remoteCoach: {
+          ...withProposal.remoteCoach,
+          lastRequest: {
+            ...resolution.metadata,
+            source: resolution.source,
+            resultCode: accepted ? resolution.resultCode : 'invalid_proposal',
+            latencyMs: Date.now() - startedAt,
+          },
+        },
+      };
+    });
+    setCoachRequestStatus('idle');
+  }, [coachRequestStatus, mutate, state]);
+
+  const applyStoredCoachProposal = useCallback(
+    (proposalId: string) => {
+      mutate((current) => decideCoachProposal(current, proposalId, 'apply'));
+    },
+    [mutate],
+  );
+
+  const rejectStoredCoachProposal = useCallback(
+    (proposalId: string) => {
+      mutate((current) => decideCoachProposal(current, proposalId, 'reject'));
+    },
+    [mutate],
+  );
 
   const value = useMemo<AppStoreValue>(
     () => ({
       state,
       hydrationStatus,
       persistenceMessage,
+      coachRequestStatus,
+      coachRequestMessage,
+      remoteCoachConfigured: remoteCoachAdapter.isConfigured(),
       retryHydration,
       startFreshAfterReadError,
       updateOnboardingDraft,
@@ -383,11 +680,18 @@ export function AppStoreProvider({ children }: PropsWithChildren) {
       skipToday,
       recordSet,
       finishWorkout,
+      setRemoteCoachConsent,
+      connectRemoteCoach,
+      requestCoachProposal,
+      applyCoachProposal: applyStoredCoachProposal,
+      rejectCoachProposal: rejectStoredCoachProposal,
     }),
     [
       state,
       hydrationStatus,
       persistenceMessage,
+      coachRequestStatus,
+      coachRequestMessage,
       retryHydration,
       startFreshAfterReadError,
       updateOnboardingDraft,
@@ -399,6 +703,11 @@ export function AppStoreProvider({ children }: PropsWithChildren) {
       skipToday,
       recordSet,
       finishWorkout,
+      setRemoteCoachConsent,
+      connectRemoteCoach,
+      requestCoachProposal,
+      applyStoredCoachProposal,
+      rejectStoredCoachProposal,
     ],
   );
 

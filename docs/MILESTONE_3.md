@@ -1,6 +1,6 @@
 # Milestone 3 — ograniczona pętla AI
 
-- Status: **proponowany do implementacji po zamknięciu technicznego AC8 M2**
+- Status: **implementacja lokalna zakończona; deployment, real-model eval i AC8 w toku**
 - Robocza nazwa: **Bounded AI Coach**
 
 ## Cel
@@ -22,7 +22,7 @@ ograniczona personalizacja pomaga użytkownikowi podjąć następne realne dzia�
 ## Docelowy flow
 
 ```text
-lokalny AppState v2
+lokalny AppState v3
   → zminimalizowany CoachContext
   → bezpieczny endpoint backendowy
   → OpenAI Responses API + jedna strict function proposal
@@ -44,9 +44,10 @@ lokalny AppState v2
   go unieważnić bez wydawania nowej wersji IPA.
 - Awaria sieci, modelu albo backendu zawsze wraca do lokalnego coacha M2.
 
-Docelowy hosting wymaga krótkiego ADR na początku implementacji. Domyślny kierunek
-to mała funkcja serverless z sekretem środowiskowym, rate limitingiem i
-revocation; wybór dostawcy nie może przenikać do domeny ani klienta mobilnego.
+Hosting został wybrany w [ADR-001](ADR_001_M3_COACH_BACKEND.md): mały Cloudflare
+Worker z Durable Object, sekretem środowiskowym, limitami i revocation. Typy Cloudflare nie
+przenikają do domeny ani klienta mobilnego. Deployment wymaga jeszcze konta,
+bindingu Durable Object, migracji i jawnego ustawienia sekretów.
 
 ## Minimalny kontekst wysyłany do modelu
 
@@ -97,6 +98,40 @@ lub jedną propozycję. Jest to zgodne z aktualnymi zaleceniami
 [OpenAI Function Calling](https://developers.openai.com/api/docs/guides/function-calling).
 Model i reasoning effort są konfiguracją serwera, nie częścią kontraktu aplikacji;
 wybór następuje na podstawie fixture evals, kosztu i opóźnienia.
+
+## Stan implementacji — 2026-08-13
+
+Zaimplementowane:
+
+- schema v3 i bezstratna migracja v1 → v2 → v3 przy zachowaniu klucza storage;
+- `CoachContextV1`, strict parser oraz deterministyczny serializer;
+- `CoachProposalV1`, zamknięty katalog actions i podwójna walidacja;
+- zapis pending/applied/rejected/expired, idempotencja i outcome occurrence;
+- jawny opt-in/opt-out, ekran kategorii danych i etykieta remote/local;
+- token instalacji w iOS Secure Store i ponawialna revocation;
+- timeout 5 s, maksymalnie jeden retry requestu oraz czysty local fallback service;
+- trwały, ograniczony telemetry outbox z backoffem i limitem 5 prób; opt-out
+  natychmiast anuluje requesty, czyści kolejkę i tombstonuje porzucone zdarzenia;
+- Worker: atomowy one-time access code, enrollment rate limit, hash tokenu,
+  transakcyjny auth/quota/revocation, decision/outcome telemetry i metadata-only logs;
+- OpenAI adapter:
+  OpenAI Responses API z `strict: true`, `parallel_tool_calls: false`, `store: false`;
+- 20 deterministycznych fixtures z expected state/action/rationale/message,
+  100% safety fixtures i test kontraktu backendu;
+- build number 3 oraz testy M3 dodane do workflow iOS.
+
+Niewykonane lub niezweryfikowane:
+
+- deployment Workera, Durable Object i sekretów;
+- wybór przypiętego modelu na podstawie prawdziwych model evals;
+- rzeczywisty request do OpenAI — repo nie zawiera klucza;
+- native CI/IPA dla build 3;
+- pełny flow, airplane mode i revocation na fizycznym iPhonie;
+- zaakceptowana i odrzucona propozycja wraz z późniejszym wynikiem w dogfood.
+
+Lokalny status AC: AC2, AC4 i kontraktowa część AC3/AC5/AC7 są pokryte testami.
+AC1, AC3, AC6 i AC8 pozostają częściowe do czasu wdrożenia, real-model evals,
+natywnego CI oraz testu urządzeniowego.
 
 ## UX
 

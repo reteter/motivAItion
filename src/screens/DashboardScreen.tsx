@@ -15,7 +15,11 @@ import {
   nextActionableOccurrence,
   occurrenceForToday,
 } from '../domain/schedule';
-import { DecisionReason, ProtocolExercise } from '../domain/types';
+import {
+  CoachProposalRationaleCode,
+  DecisionReason,
+  ProtocolExercise,
+} from '../domain/types';
 import { useAppStore } from '../store/AppStore';
 import {
   Body,
@@ -62,14 +66,27 @@ function dateLabel(iso: string) {
 
 type DecisionMode = 'skip' | 'reschedule';
 
+function rationaleLabel(code: CoachProposalRationaleCode) {
+  return {
+    recovery_after_gap: 'spokojny powrót po przerwie',
+    low_recent_consistency: 'niższa Consistency w ostatnich 7 dniach',
+    time_pressure_pattern: 'powtarzający się brak czasu',
+    pain_requires_caution: 'ostatni sygnał bólu lub ograniczenia',
+    positive_momentum: 'plan nie wymaga teraz zmiany',
+    insufficient_evidence: 'za mało danych do bezpiecznej zmiany',
+  }[code];
+}
+
 export function DashboardScreen({
   onStart,
   onHistory,
   onSchedule,
+  onCoach,
 }: {
   onStart: () => void;
   onHistory: () => void;
   onSchedule: () => void;
+  onCoach: () => void;
 }) {
   const {
     state,
@@ -78,6 +95,11 @@ export function DashboardScreen({
     chooseWorkout,
     rescheduleToday,
     skipToday,
+    coachRequestStatus,
+    coachRequestMessage,
+    requestCoachProposal,
+    applyCoachProposal,
+    rejectCoachProposal,
   } = useAppStore();
   const [decisionMode, setDecisionMode] = useState<DecisionMode>();
   const [referenceNow, setReferenceNow] = useState(() => new Date());
@@ -132,6 +154,11 @@ export function DashboardScreen({
     occurrence?.status === 'skipped' || occurrence?.status === 'rescheduled';
   const recovery = canTrain && occurrence.recommendedVariant === 'minimum';
   const overdue = occurrence ? isOccurrenceOverdue(occurrence, now) : false;
+  const pendingProposal = state.remoteCoach.proposals.find(
+    (proposal) =>
+      proposal.status === 'pending' &&
+      new Date(proposal.expiresAt).getTime() > referenceNow.getTime(),
+  );
 
   function begin(variant: 'standard' | 'minimum') {
     if (chooseWorkout(variant)) onStart();
@@ -220,6 +247,94 @@ export function DashboardScreen({
           <Text style={styles.warningText}>{persistenceMessage}</Text>
         </View>
       ) : null}
+
+      <Card>
+        <View style={styles.coachCardHeader}>
+          <View style={styles.coachCardCopy}>
+            <Text style={styles.cardTitle}>Aktywny AI coach</Text>
+            <Text style={styles.cardMeta}>
+              {state.remoteCoach.mode === 'enabled'
+                ? state.remoteCoach.installationStatus === 'active'
+                  ? 'Zdalne AI aktywne'
+                  : 'Tryb lokalny · brak aktywnego tokenu'
+                : 'Zdalne AI wyłączone'}
+            </Text>
+          </View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Ustawienia AI coacha"
+            hitSlop={10}
+            onPress={onCoach}
+          >
+            <Text style={styles.topLink}>Ustawienia</Text>
+          </Pressable>
+        </View>
+
+        {pendingProposal ? (
+          <>
+            <View style={styles.proposalSource}>
+              <Text style={styles.proposalSourceText}>
+                {pendingProposal.source === 'remote' ? 'ZDALNY AI' : 'FALLBACK LOKALNY'}
+              </Text>
+            </View>
+            <Text style={styles.proposalMessage}>{pendingProposal.message}</Text>
+            <Text style={styles.cardMeta}>
+              Dlaczego: {rationaleLabel(pendingProposal.rationaleCode)}.
+            </Text>
+            <Text style={styles.cardMeta}>
+              Zmiana zostanie wykonana dopiero po Twojej akceptacji.
+            </Text>
+            <View style={styles.twoColumns}>
+              <View style={styles.flexButton}>
+                <Button
+                  label="Zastosuj"
+                  onPress={() => {
+                    applyCoachProposal(pendingProposal.proposalId);
+                    setCoachMessage('Propozycja zastosowana. Nadal możesz wybrać Standard.');
+                  }}
+                />
+              </View>
+              <View style={styles.flexButton}>
+                <Button
+                  label="Nie teraz"
+                  variant="secondary"
+                  onPress={() => rejectCoachProposal(pendingProposal.proposalId)}
+                />
+              </View>
+            </View>
+          </>
+        ) : state.remoteCoach.mode === 'enabled' ? (
+          <>
+            <Text style={styles.cardMeta}>
+              Poproś o jedną propozycję opartą na zagregowanej historii. Trening nie
+              czeka na odpowiedź sieciową.
+            </Text>
+            <Button
+              label={coachRequestStatus === 'loading' ? 'Analizuję…' : 'Zaproponuj następny krok'}
+              variant="secondary"
+              disabled={coachRequestStatus === 'loading'}
+              onPress={() => void requestCoachProposal()}
+            />
+          </>
+        ) : (
+          <>
+            <Text style={styles.cardMeta}>
+              Możesz włączyć ograniczonego coacha i dokładnie zobaczyć, jakie kategorie
+              danych są wysyłane.
+            </Text>
+            <Button label="Poznaj i włącz" variant="secondary" onPress={onCoach} />
+          </>
+        )}
+
+        {coachRequestMessage ? (
+          <Text
+            style={coachRequestStatus === 'error' ? styles.warningText : styles.coachStatus}
+            accessibilityRole={coachRequestStatus === 'error' ? 'alert' : undefined}
+          >
+            {coachRequestMessage}
+          </Text>
+        ) : null}
+      </Card>
 
       {canTrain && protocol && occurrence ? (
         <>
@@ -380,6 +495,23 @@ const styles = StyleSheet.create({
   xpValue: { color: colors.progress, fontSize: 14, fontWeight: '800' },
   warning: { padding: spacing.md, borderRadius: radius.sm, backgroundColor: '#F5E1CF' },
   warningText: { color: colors.warning, fontSize: 13, lineHeight: 19 },
+  coachCardHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
+  coachCardCopy: { flex: 1 },
+  proposalSource: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: radius.pill,
+    backgroundColor: colors.progressSoft,
+  },
+  proposalSourceText: {
+    color: colors.progress,
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 0.8,
+  },
+  proposalMessage: { color: colors.ink, fontSize: 17, lineHeight: 24, fontWeight: '700' },
+  coachStatus: { color: colors.progress, fontSize: 13, lineHeight: 19 },
   workoutHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   todayDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: colors.accent },
   exerciseList: { marginTop: spacing.sm, borderTopWidth: 1, borderColor: colors.line },

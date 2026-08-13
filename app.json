@@ -6,12 +6,17 @@
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
-    "platforms": ["ios"],
-    "plugins": ["expo-notifications"],
+    "platforms": [
+      "ios"
+    ],
+    "plugins": [
+      "expo-notifications",
+      "expo-secure-store"
+    ],
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.jakub.motivaition",
-      "buildNumber": "2"
+      "buildNumber": "3"
     }
   }
 }

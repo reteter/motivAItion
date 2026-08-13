@@ -3,16 +3,19 @@ import { toLocalDate } from './schedule';
 import {
   AppState,
   AppStateV1,
+  AppStateV2,
   BehavioralObservation,
   Baseline,
   Progress,
   Protocol,
   ReminderState,
+  RemoteCoachState,
   TrainingSchedule,
   UserProfile,
   Workout,
   WorkoutOccurrence,
 } from './types';
+import { parseCoachProposal } from '../coach/contracts';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -94,6 +97,9 @@ const observationKinds = [
   'recovery_standard_chosen',
   'workout_skipped',
   'workout_rescheduled',
+  'time_pressure_pattern',
+  'low_adherence_pattern',
+  'minimum_helped_pattern',
 ] as const;
 
 function oneOf<T extends readonly unknown[]>(value: unknown, values: T) {
@@ -274,6 +280,165 @@ function isReminderState(value: unknown): value is ReminderState {
   );
 }
 
+function isCoachProposalRecord(value: unknown) {
+  if (!isRecord(value)) return false;
+  const allowedKeys = new Set([
+    'proposalId',
+    'message',
+    'rationaleCode',
+    'action',
+    'expiresAt',
+    'promptVersion',
+    'source',
+    'requestId',
+    'receivedAt',
+    'status',
+    'decidedAt',
+    'outcomeOccurrenceId',
+    'outcomeStatus',
+    'outcomeRecordedAt',
+  ]);
+  if (Object.keys(value).some((key) => !allowedKeys.has(key))) return false;
+  const proposal = parseCoachProposal({
+    proposalId: value.proposalId,
+    message: value.message,
+    rationaleCode: value.rationaleCode,
+    action: value.action,
+    expiresAt: value.expiresAt,
+    promptVersion: value.promptVersion,
+  });
+  const baseValid = Boolean(
+    proposal &&
+      oneOf(value.source, ['remote', 'local'] as const) &&
+      (value.requestId === undefined || isNonEmptyString(value.requestId)) &&
+      isIsoDate(value.receivedAt) &&
+      oneOf(value.status, ['pending', 'applied', 'rejected', 'expired'] as const) &&
+      isOptionalIsoDate(value.decidedAt) &&
+      (value.outcomeOccurrenceId === undefined || isNonEmptyString(value.outcomeOccurrenceId)) &&
+      (value.outcomeStatus === undefined || oneOf(value.outcomeStatus, occurrenceStatuses)) &&
+      isOptionalIsoDate(value.outcomeRecordedAt)
+  );
+  if (!baseValid) return false;
+  const terminalDecision = value.status !== 'pending';
+  if (terminalDecision !== isIsoDate(value.decidedAt)) return false;
+  if (
+    !['applied', 'rejected'].includes(value.status as string) &&
+    value.outcomeOccurrenceId !== undefined
+  ) return false;
+  return (
+    (value.outcomeStatus === undefined && value.outcomeRecordedAt === undefined) ||
+    (isNonEmptyString(value.outcomeOccurrenceId) &&
+      oneOf(
+        value.outcomeStatus,
+        ['completed', 'skipped', 'missed', 'rescheduled'] as const,
+      ) &&
+      isIsoDate(value.outcomeRecordedAt))
+  );
+}
+
+function isRemoteCoachState(value: unknown): value is RemoteCoachState {
+  if (
+    !isRecord(value) ||
+    !Array.isArray(value.proposals) ||
+    !Array.isArray(value.telemetryOutbox)
+  ) return false;
+  if (
+    Object.keys(value).some(
+      (key) =>
+        ![
+          'mode',
+          'consentedAt',
+          'installationStatus',
+          'proposals',
+          'telemetryOutbox',
+          'telemetrySettledEventIds',
+          'lastRequest',
+        ].includes(key),
+    )
+  ) return false;
+  if (
+    !Array.isArray(value.telemetrySettledEventIds) ||
+    value.telemetrySettledEventIds.length > 200 ||
+    !value.telemetrySettledEventIds.every(isNonEmptyString) ||
+    new Set(value.telemetrySettledEventIds).size !== value.telemetrySettledEventIds.length
+  ) return false;
+  if (
+    value.telemetryOutbox.length > 100 ||
+    !value.telemetryOutbox.every(
+      (event) =>
+        isRecord(event) &&
+        Object.keys(event).every((key) =>
+          [
+            'eventId',
+            'proposalId',
+            'requestId',
+            'decision',
+            'outcomeCode',
+            'attempts',
+            'createdAt',
+            'nextAttemptAt',
+          ].includes(key),
+        ) &&
+        isNonEmptyString(event.eventId) &&
+        isNonEmptyString(event.proposalId) &&
+        isNonEmptyString(event.requestId) &&
+        oneOf(event.decision, ['applied', 'rejected'] as const) &&
+        (event.outcomeCode === undefined ||
+          oneOf(
+            event.outcomeCode,
+            ['completed', 'skipped', 'missed', 'rescheduled'] as const,
+          )) &&
+        isNonNegativeInteger(event.attempts) &&
+        event.attempts <= 5 &&
+        isIsoDate(event.createdAt) &&
+        isOptionalIsoDate(event.nextAttemptAt),
+    ) ||
+    new Set(
+      value.telemetryOutbox.map((event) =>
+        isRecord(event) ? event.eventId : undefined,
+      ),
+    ).size !== value.telemetryOutbox.length
+  ) return false;
+  if (
+    !oneOf(value.mode, ['not_decided', 'enabled', 'disabled'] as const) ||
+    !isOptionalIsoDate(value.consentedAt) ||
+    !oneOf(value.installationStatus, ['missing', 'active', 'revoked'] as const) ||
+    !value.proposals.every(isCoachProposalRecord) ||
+    new Set(
+      value.proposals.map((proposal) =>
+        isRecord(proposal) ? proposal.proposalId : undefined,
+      ),
+    ).size !== value.proposals.length
+  ) return false;
+  if (value.lastRequest === undefined) return true;
+  const request = value.lastRequest;
+  return (
+    isRecord(request) &&
+    Object.keys(request).every((key) =>
+      [
+        'requestId',
+        'requestedAt',
+        'source',
+        'resultCode',
+        'latencyMs',
+        'promptVersion',
+        'modelVersion',
+        'inputTokens',
+        'outputTokens',
+      ].includes(key),
+    ) &&
+    isNonEmptyString(request.requestId) &&
+    isIsoDate(request.requestedAt) &&
+    oneOf(request.source, ['remote', 'local'] as const) &&
+    oneOf(request.resultCode, ['success', 'fallback', 'invalid_proposal'] as const) &&
+    (request.latencyMs === undefined || isNonNegativeInteger(request.latencyMs)) &&
+    isNonEmptyString(request.promptVersion) &&
+    (request.modelVersion === undefined || isNonEmptyString(request.modelVersion)) &&
+    (request.inputTokens === undefined || isNonNegativeInteger(request.inputTokens)) &&
+    (request.outputTokens === undefined || isNonNegativeInteger(request.outputTokens))
+  );
+}
+
 function hasCommonStateShape(value: Record<string, unknown>) {
   return (
     isOnboardingDraft(value.onboardingDraft) &&
@@ -297,22 +462,19 @@ function hasUniqueIds(values: Array<{ id: string }>) {
   return new Set(values.map((value) => value.id)).size === values.length;
 }
 
-export function isAppStateV2(value: unknown): value is AppState {
-  if (!isRecord(value)) return false;
-  if (
-    value.schemaVersion !== 2 ||
-    !hasCommonStateShape(value) ||
-    (value.schedule !== undefined && !isSchedule(value.schedule)) ||
-    !Array.isArray(value.occurrences) ||
-    !value.occurrences.every(isOccurrence) ||
-    !hasUniqueIds(value.occurrences) ||
-    !hasUniqueIds(value.history as Workout[]) ||
-    !isReminderState(value.reminders)
-  ) {
-    return false;
-  }
+function hasV2StateShape(value: Record<string, unknown>) {
+  return (
+    hasCommonStateShape(value) &&
+    (value.schedule === undefined || isSchedule(value.schedule)) &&
+    Array.isArray(value.occurrences) &&
+    value.occurrences.every(isOccurrence) &&
+    hasUniqueIds(value.occurrences) &&
+    hasUniqueIds(value.history as Workout[]) &&
+    isReminderState(value.reminders)
+  );
+}
 
-  const candidate = value as unknown as AppState;
+function hasValidRelationships(candidate: AppStateV2 | AppState) {
   const protocolVersions = new Set(candidate.protocols.map((protocol) => protocol.version));
   if (
     protocolVersions.size !== candidate.protocols.length ||
@@ -330,29 +492,44 @@ export function isAppStateV2(value: unknown): value is AppState {
             occurrence.workoutId === workout.id,
         ),
     )
-  ) {
-    return false;
-  }
+  ) return false;
 
   if (candidate.todayWorkout) {
     const occurrence = candidate.occurrences.find(
       (item) => item.id === candidate.todayWorkout?.occurrenceId,
     );
     const matchingLifecycle =
-      (candidate.todayWorkout.status === 'planned' &&
-        occurrence?.status === 'scheduled') ||
-      (candidate.todayWorkout.status === 'in_progress' &&
-        occurrence?.status === 'in_progress');
+      (candidate.todayWorkout.status === 'planned' && occurrence?.status === 'scheduled') ||
+      (candidate.todayWorkout.status === 'in_progress' && occurrence?.status === 'in_progress');
     if (
       !protocolVersions.has(candidate.todayWorkout.protocolVersion) ||
       !occurrence ||
       !matchingLifecycle ||
       occurrence.workoutId !== candidate.todayWorkout.id
-    ) {
-      return false;
-    }
+    ) return false;
   }
   return true;
+}
+
+export function isAppStateV2(value: unknown): value is AppStateV2 {
+  if (!isRecord(value)) return false;
+  if (
+    value.schemaVersion !== 2 ||
+    !hasV2StateShape(value)
+  ) {
+    return false;
+  }
+  return hasValidRelationships(value as unknown as AppStateV2);
+}
+
+export function isAppStateV3(value: unknown): value is AppState {
+  return Boolean(
+    isRecord(value) &&
+      value.schemaVersion === 3 &&
+      hasV2StateShape(value) &&
+      isRemoteCoachState(value.remoteCoach) &&
+      hasValidRelationships(value as unknown as AppState),
+  );
 }
 
 function isAppStateV1(value: unknown): value is AppStateV1 {
@@ -388,7 +565,7 @@ function completedOccurrence(workout: Workout): WorkoutOccurrence {
   };
 }
 
-export function migrateV1ToV2(value: AppStateV1): AppState {
+export function migrateV1ToV2(value: AppStateV1): AppStateV2 {
   const history = value.history.map((workout) => {
     const occurrence = completedOccurrence(workout);
     return { ...workout, occurrenceId: occurrence.id };
@@ -411,11 +588,15 @@ export function migrateV1ToV2(value: AppStateV1): AppState {
   }
 
   return {
-    ...createInitialState(),
-    ...value,
     schemaVersion: 2,
+    onboardingDraft: value.onboardingDraft,
+    profile: value.profile,
+    baseline: value.baseline,
+    protocols: value.protocols,
     todayWorkout,
     history,
+    observations: value.observations,
+    progress: value.progress,
     occurrences,
     reminders: {
       enabled: false,
@@ -424,8 +605,39 @@ export function migrateV1ToV2(value: AppStateV1): AppState {
   };
 }
 
+export function migrateV2ToV3(value: AppStateV2): AppState {
+  return {
+    ...value,
+    schemaVersion: 3,
+    remoteCoach: createInitialState().remoteCoach,
+  };
+}
+
 export function parseAndMigrateState(value: unknown): AppState {
-  if (isAppStateV2(value)) return value;
-  if (isAppStateV1(value)) return migrateV1ToV2(value);
+  if (isAppStateV3(value)) return value;
+  if (
+    isRecord(value) &&
+    value.schemaVersion === 3 &&
+    isRecord(value.remoteCoach) &&
+    (value.remoteCoach.telemetryOutbox === undefined ||
+      value.remoteCoach.telemetrySettledEventIds === undefined)
+  ) {
+    return parseAndMigrateState({
+      ...value,
+      remoteCoach: {
+        ...value.remoteCoach,
+        telemetryOutbox: Array.isArray(value.remoteCoach.telemetryOutbox)
+          ? value.remoteCoach.telemetryOutbox
+          : [],
+        telemetrySettledEventIds: Array.isArray(
+          value.remoteCoach.telemetrySettledEventIds,
+        )
+          ? value.remoteCoach.telemetrySettledEventIds
+          : [],
+      },
+    });
+  }
+  if (isAppStateV2(value)) return migrateV2ToV3(value);
+  if (isAppStateV1(value)) return migrateV2ToV3(migrateV1ToV2(value));
   throw new Error('Nieznany lub uszkodzony format danych.');
 }

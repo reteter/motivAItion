@@ -28,6 +28,9 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Domain, coach and backend tests
+        run: npm test
+
       - name: Generate iOS project
         run: npx expo prebuild --platform ios --clean --no-install
 

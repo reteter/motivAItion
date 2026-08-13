@@ -75,7 +75,7 @@ export function workoutFromProtocol(
 
 export function createInitialState(): AppState {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     onboardingDraft: {},
     protocols: [],
     history: [],
@@ -84,6 +84,13 @@ export function createInitialState(): AppState {
     reminders: {
       enabled: false,
       permission: 'unknown',
+    },
+    remoteCoach: {
+      mode: 'not_decided',
+      installationStatus: 'missing',
+      proposals: [],
+      telemetryOutbox: [],
+      telemetrySettledEventIds: [],
     },
     progress: {
       totalXp: 0,

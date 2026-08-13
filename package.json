@@ -6,7 +6,10 @@
   "scripts": {
     "start": "expo start",
     "ios": "expo start --ios",
-    "test:domain": "tsc -p tsconfig.domain-tests.json && node .domain-test-build/tests/domain.test.js",
+    "test:domain": "tsc -p tsconfig.domain-tests.json && node .domain-test-build/tests/domain.test.js && node .domain-test-build/tests/coach.test.js",
+    "test:backend": "tsc -p tsconfig.backend.json && node .backend-test-build/tests/backend.test.js",
+    "test": "npm run test:domain && npm run test:backend",
+    "coach:generate-access-code": "node backend/generate-access-code.mjs",
     "typecheck": "tsc --noEmit",
     "check:expo": "expo config --type public"
   },
@@ -14,6 +17,7 @@
     "@react-native-async-storage/async-storage": "2.2.0",
     "expo": "~54.0.0",
     "expo-notifications": "~0.32.17",
+    "expo-secure-store": "~15.0.8",
     "expo-status-bar": "~3.0.9",
     "react": "19.1.0",
     "react-native": "0.81.5"
