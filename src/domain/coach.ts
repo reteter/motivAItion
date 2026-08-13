@@ -7,7 +7,12 @@ import {
   SetFeedback,
   Workout,
 } from './types';
-import { currentProtocol, workoutFromProtocol } from './protocol';
+import { currentProtocol } from './protocol';
+import {
+  rescheduleOccurrence,
+  skipOccurrence,
+  startOccurrence,
+} from './schedule';
 
 const targetLimits: Record<ProtocolExercise['id'], [number, number]> = {
   pushups: [1, 20],
@@ -18,32 +23,35 @@ const targetLimits: Record<ProtocolExercise['id'], [number, number]> = {
 const clamp = (value: number, [min, max]: [number, number]) =>
   Math.min(max, Math.max(min, value));
 
-export function validateCoachAction(
-  state: AppState,
-  action: CoachAction,
-): boolean {
-  if (action.type === 'reduce_today_workout') {
-    return Boolean(state.todayWorkout && state.todayWorkout.status !== 'completed');
-  }
-
+export function validateCoachAction(state: AppState, action: CoachAction): boolean {
   if (action.type === 'add_behavioral_observation') {
     return action.observation.confidence >= 0 && action.observation.confidence <= 1;
   }
 
-  const protocol = currentProtocol(state);
-  if (!protocol || action.changes.length === 0) return false;
-  const ids = new Set(action.changes.map((change) => change.exerciseId));
-  if (ids.size !== action.changes.length) return false;
+  if (action.type === 'modify_future_protocol') {
+    const protocol = currentProtocol(state);
+    if (!protocol || action.changes.length === 0) return false;
+    const ids = new Set(action.changes.map((change) => change.exerciseId));
+    if (ids.size !== action.changes.length) return false;
+    return action.changes.every((change) => {
+      const exercise = protocol.exercises.find(
+        (candidate) => candidate.id === change.exerciseId,
+      );
+      if (!exercise || !Number.isInteger(change.targetDelta)) return false;
+      const nextTarget = exercise.target + change.targetDelta;
+      const [min, max] = targetLimits[change.exerciseId];
+      return nextTarget >= min && nextTarget <= max;
+    });
+  }
 
-  return action.changes.every((change) => {
-    const exercise = protocol.exercises.find(
-      (candidate) => candidate.id === change.exerciseId,
-    );
-    if (!exercise || !Number.isInteger(change.targetDelta)) return false;
-    const nextTarget = exercise.target + change.targetDelta;
-    const [min, max] = targetLimits[change.exerciseId];
-    return nextTarget >= min && nextTarget <= max;
-  });
+  const occurrence = state.occurrences.find(
+    (candidate) => candidate.id === action.occurrenceId,
+  );
+  if (!occurrence) return false;
+  if (action.type === 'recommend_recovery_workout') {
+    return occurrence.status === 'scheduled';
+  }
+  return occurrence.status === 'scheduled';
 }
 
 export function applyCoachAction(
@@ -53,26 +61,25 @@ export function applyCoachAction(
 ): AppState {
   if (!validateCoachAction(state, action)) return state;
 
-  if (action.type === 'reduce_today_workout' && state.todayWorkout) {
+  if (action.type === 'choose_minimum_workout') {
+    return startOccurrence(state, action.occurrenceId, 'minimum', now);
+  }
+  if (action.type === 'skip_workout_occurrence') {
+    return skipOccurrence(state, action.occurrenceId, action.reason, now);
+  }
+  if (action.type === 'reschedule_workout_occurrence') {
+    return rescheduleOccurrence(state, action.occurrenceId, action.reason, now);
+  }
+  if (action.type === 'recommend_recovery_workout') {
     return {
       ...state,
-      todayWorkout: {
-        ...state.todayWorkout,
-        variant: 'minimum',
-        exercises: state.todayWorkout.exercises.map((exercise) => ({
-          ...exercise,
-          sets: exercise.sets.slice(0, 1).map((set) => ({
-            ...set,
-            target: Math.max(
-              exercise.unit === 'seconds' ? 5 : 1,
-              Math.ceil(set.target / 2),
-            ),
-          })),
-        })),
-      },
+      occurrences: state.occurrences.map((occurrence) =>
+        occurrence.id === action.occurrenceId
+          ? { ...occurrence, recommendedVariant: 'minimum' }
+          : occurrence,
+      ),
     };
   }
-
   if (action.type === 'add_behavioral_observation') {
     return {
       ...state,
@@ -87,42 +94,38 @@ export function applyCoachAction(
     };
   }
 
-  if (action.type === 'modify_future_protocol') {
-    const protocol = currentProtocol(state);
-    if (!protocol) return state;
-
-    const nextProtocol: Protocol = {
-      ...protocol,
-      version: protocol.version + 1,
-      createdAt: now.toISOString(),
-      reason: 'Cele serii dopasowane po ostatnim feedbacku.',
-      exercises: protocol.exercises.map((exercise) => {
-        const change = action.changes.find(
-          (candidate) => candidate.exerciseId === exercise.id,
-        );
-        return change
-          ? {
-              ...exercise,
-              target: clamp(
-                exercise.target + change.targetDelta,
-                targetLimits[exercise.id],
-              ),
-            }
-          : exercise;
-      }),
-    };
-
-    return { ...state, protocols: [...state.protocols, nextProtocol] };
-  }
-
-  return state;
+  const protocol = currentProtocol(state);
+  if (!protocol) return state;
+  const nextProtocol: Protocol = {
+    ...protocol,
+    version: protocol.version + 1,
+    createdAt: now.toISOString(),
+    reason: 'Cele serii dopasowane po ostatnim feedbacku.',
+    exercises: protocol.exercises.map((exercise) => {
+      const change = action.changes.find(
+        (candidate) => candidate.exerciseId === exercise.id,
+      );
+      return change
+        ? {
+            ...exercise,
+            target: clamp(
+              exercise.target + change.targetDelta,
+              targetLimits[exercise.id],
+            ),
+          }
+        : exercise;
+    }),
+  };
+  return { ...state, protocols: [...state.protocols, nextProtocol] };
 }
 
 function feedbackFor(workout: Workout, exerciseId: ProtocolExercise['id']) {
-  return workout.exercises
-    .find((exercise) => exercise.id === exerciseId)
-    ?.sets.map((set) => set.feedback)
-    .filter((value): value is SetFeedback => Boolean(value)) ?? [];
+  return (
+    workout.exercises
+      .find((exercise) => exercise.id === exerciseId)
+      ?.sets.map((set) => set.feedback)
+      .filter((value): value is SetFeedback => Boolean(value)) ?? []
+  );
 }
 
 export function proposePostWorkoutActions(
@@ -171,24 +174,22 @@ export function proposePostWorkoutActions(
     }
   }
 
-  if (changes.length > 0) {
-    const protocol = currentProtocol(state);
-    const validChanges = changes.filter((change) => {
-      const exercise = protocol?.exercises.find(
-        (candidate) => candidate.id === change.exerciseId,
-      );
-      if (!exercise) return false;
-      const [min, max] = targetLimits[change.exerciseId];
-      const nextTarget = exercise.target + change.targetDelta;
-      return nextTarget >= min && nextTarget <= max;
-    });
-    if (validChanges.length > 0) {
+  const protocol = currentProtocol(state);
+  const validChanges = changes.filter((change) => {
+    const exercise = protocol?.exercises.find(
+      (candidate) => candidate.id === change.exerciseId,
+    );
+    if (!exercise) return false;
+    const [min, max] = targetLimits[change.exerciseId];
+    const nextTarget = exercise.target + change.targetDelta;
+    return nextTarget >= min && nextTarget <= max;
+  });
+  if (validChanges.length > 0) {
     actions.unshift({
       type: 'modify_future_protocol',
       reason: 'workout_feedback',
       changes: validChanges,
     });
-    }
   }
 
   if (workout.variant === 'minimum') {
@@ -201,15 +202,34 @@ export function proposePostWorkoutActions(
       },
     });
   }
-
   return actions;
 }
 
 export function completeWorkout(
   state: AppState,
-  workout: Workout,
   now = new Date(),
-): CompletionResult {
+): CompletionResult | undefined {
+  const workout = state.todayWorkout;
+  if (!workout?.occurrenceId || workout.status !== 'in_progress') return undefined;
+  const occurrence = state.occurrences.find(
+    (candidate) => candidate.id === workout.occurrenceId,
+  );
+  const allSetsCompleted =
+    workout.exercises.length > 0 &&
+    workout.exercises.every(
+      (exercise) =>
+        exercise.sets.length > 0 &&
+        exercise.sets.every((set) => Boolean(set.completedAt && set.feedback)),
+    );
+  if (
+    occurrence?.status !== 'in_progress' ||
+    occurrence.workoutId !== workout.id ||
+    occurrence.chosenVariant !== workout.variant ||
+    !allSetsCompleted
+  ) {
+    return undefined;
+  }
+
   const earnedXp = workout.variant === 'minimum' ? 25 : 50;
   const completedWorkout: Workout = {
     ...workout,
@@ -218,17 +238,26 @@ export function completeWorkout(
     earnedXp,
   };
   const actions = proposePostWorkoutActions(state, completedWorkout);
-
   let nextState: AppState = {
     ...state,
     todayWorkout: undefined,
-    history: [completedWorkout, ...state.history].slice(0, 30),
+    history: [completedWorkout, ...state.history].slice(0, 90),
+    occurrences: state.occurrences.map((candidate) =>
+      candidate.id === occurrence.id
+        ? {
+            ...candidate,
+            status: 'completed',
+            completedAt: now.toISOString(),
+            chosenVariant: workout.variant,
+            workoutId: workout.id,
+          }
+        : candidate,
+    ),
     progress: {
       totalXp: state.progress.totalXp + earnedXp,
       completedWorkouts: state.progress.completedWorkouts + 1,
       minimumWorkouts:
-        state.progress.minimumWorkouts +
-        (completedWorkout.variant === 'minimum' ? 1 : 0),
+        state.progress.minimumWorkouts + (workout.variant === 'minimum' ? 1 : 0),
     },
   };
 
@@ -245,34 +274,5 @@ export function completeWorkout(
     : completedWorkout.variant === 'minimum'
       ? 'Minimum zrobione. Dziś chodziło o podtrzymanie powrotu, nie o rekord.'
       : 'Pełny trening zapisany. Dobra robota — bez nadęcia, po prostu wykonane.';
-
   return { state: nextState, coachMessage, appliedActions };
-}
-
-export function ensureTodayWorkout(state: AppState, now = new Date()): AppState {
-  if (state.todayWorkout) return state;
-  const today = now.toDateString();
-  const alreadyCompleted = state.history.some(
-    (workout) =>
-      workout.completedAt && new Date(workout.completedAt).toDateString() === today,
-  );
-  if (alreadyCompleted) return state;
-  const protocol = currentProtocol(state);
-  if (!protocol) return state;
-  const lastCompletion = state.history
-    .map((workout) => workout.completedAt)
-    .filter((value): value is string => Boolean(value))
-    .map((value) => new Date(value))
-    .sort((left, right) => right.getTime() - left.getTime())[0];
-  if (lastCompletion) {
-    const dayMs = 24 * 60 * 60 * 1000;
-    const calendarDays = Math.floor(
-      (new Date(now.toDateString()).getTime() -
-        new Date(lastCompletion.toDateString()).getTime()) /
-        dayMs,
-    );
-    const restDays = protocol.daysPerWeek >= 4 ? 1 : protocol.daysPerWeek === 3 ? 2 : 3;
-    if (calendarDays < restDays) return state;
-  }
-  return { ...state, todayWorkout: workoutFromProtocol(protocol, now) };
 }

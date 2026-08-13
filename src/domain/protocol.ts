@@ -52,9 +52,11 @@ export function createInitialProtocol(
 export function workoutFromProtocol(
   protocol: Protocol,
   now = new Date(),
+  occurrenceId?: string,
 ): Workout {
   return {
-    id: `workout-${now.getTime()}`,
+    id: occurrenceId ? `workout-${occurrenceId}` : `workout-${now.getTime()}`,
+    occurrenceId,
     protocolVersion: protocol.version,
     plannedAt: now.toISOString(),
     variant: 'standard',
@@ -73,11 +75,16 @@ export function workoutFromProtocol(
 
 export function createInitialState(): AppState {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     onboardingDraft: {},
     protocols: [],
     history: [],
     observations: [],
+    occurrences: [],
+    reminders: {
+      enabled: false,
+      permission: 'unknown',
+    },
     progress: {
       totalXp: 0,
       completedWorkouts: 0,

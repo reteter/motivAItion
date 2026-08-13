@@ -10,6 +10,13 @@ export type PreferredTime = 'morning' | 'afternoon' | 'evening';
 export type SetFeedback = 'easy' | 'ok' | 'hard';
 export type WorkoutVariant = 'standard' | 'minimum';
 export type ExerciseUnit = 'reps' | 'seconds';
+export type Weekday = 1 | 2 | 3 | 4 | 5 | 6 | 7;
+export type DecisionReason =
+  | 'low_energy'
+  | 'no_time'
+  | 'pain_or_limitation'
+  | 'exercise_resistance'
+  | 'other';
 
 export interface UserProfile {
   goal: string;
@@ -60,6 +67,7 @@ export interface WorkoutExercise {
 
 export interface Workout {
   id: string;
+  occurrenceId?: string;
   protocolVersion: number;
   plannedAt: string;
   variant: WorkoutVariant;
@@ -69,10 +77,51 @@ export interface Workout {
   earnedXp?: number;
 }
 
+export interface TrainingSchedule {
+  weekdays: Weekday[];
+  localTime: string;
+  timeZone: string;
+  startsOn: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type WorkoutOccurrenceStatus =
+  | 'scheduled'
+  | 'in_progress'
+  | 'completed'
+  | 'skipped'
+  | 'missed'
+  | 'rescheduled';
+
+export interface WorkoutOccurrence {
+  id: string;
+  localDate: string;
+  scheduledAt: string;
+  protocolVersion: number;
+  status: WorkoutOccurrenceStatus;
+  sourceOccurrenceId?: string;
+  decisionReason?: DecisionReason;
+  decisionNote?: string;
+  recommendedVariant?: WorkoutVariant;
+  chosenVariant?: WorkoutVariant;
+  workoutId?: string;
+  completedAt?: string;
+}
+
+export type BehavioralObservationKind =
+  | 'low_energy_minimum_helped'
+  | 'hard_exercise'
+  | 'easy_exercise'
+  | 'recovery_minimum_accepted'
+  | 'recovery_standard_chosen'
+  | 'workout_skipped'
+  | 'workout_rescheduled';
+
 export interface BehavioralObservation {
   id: string;
   createdAt: string;
-  kind: 'low_energy_minimum_helped' | 'hard_exercise' | 'easy_exercise';
+  kind: BehavioralObservationKind;
   confidence: number;
   evidence: string;
 }
@@ -83,7 +132,15 @@ export interface Progress {
   minimumWorkouts: number;
 }
 
-export interface AppState {
+export interface ReminderState {
+  enabled: boolean;
+  permission: 'unknown' | 'granted' | 'denied';
+  notificationId?: string;
+  occurrenceId?: string;
+  scheduledAt?: string;
+}
+
+export interface AppStateV1 {
   schemaVersion: 1;
   onboardingDraft: Partial<UserProfile>;
   profile?: UserProfile;
@@ -95,10 +152,40 @@ export interface AppState {
   progress: Progress;
 }
 
+export interface AppState {
+  schemaVersion: 2;
+  onboardingDraft: Partial<UserProfile>;
+  profile?: UserProfile;
+  baseline?: Baseline;
+  protocols: Protocol[];
+  schedule?: TrainingSchedule;
+  occurrences: WorkoutOccurrence[];
+  todayWorkout?: Workout;
+  history: Workout[];
+  observations: BehavioralObservation[];
+  progress: Progress;
+  reminders: ReminderState;
+}
+
 export type CoachAction =
   | {
-      type: 'reduce_today_workout';
-      reason: 'low_energy' | 'limited_time';
+      type: 'choose_minimum_workout';
+      occurrenceId: string;
+      reason: 'low_energy' | 'no_time' | 'recovery';
+    }
+  | {
+      type: 'reschedule_workout_occurrence';
+      occurrenceId: string;
+      reason: DecisionReason;
+    }
+  | {
+      type: 'skip_workout_occurrence';
+      occurrenceId: string;
+      reason: DecisionReason;
+    }
+  | {
+      type: 'recommend_recovery_workout';
+      occurrenceId: string;
     }
   | {
       type: 'modify_future_protocol';
@@ -118,4 +205,10 @@ export interface CompletionResult {
   state: AppState;
   coachMessage: string;
   appliedActions: CoachAction[];
+}
+
+export interface ConsistencyResult {
+  completed: number;
+  planned: number;
+  ratio: number;
 }

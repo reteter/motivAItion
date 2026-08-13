@@ -1,7 +1,19 @@
 # Milestone 2 — tygodniowa pętla realizacji
 
-- Status: **zatwierdzony do implementacji 2026-08-13**
+- Status: **implementacja i niezależne review zakończone 2026-08-13; AC8 w toku**
 - Robocza nazwa: **Return Tomorrow**
+
+## Stan kryteriów po implementacji
+
+- AC1, AC2, AC3, AC5, AC6 i AC7: **PASS** w testach domeny i review;
+- AC4: **PARTIAL** — logika jednego przyszłego przypomnienia jest zweryfikowana,
+  odbiór i permission flow wymagają fizycznego iPhone'a;
+- AC8: **NOT VERIFIED** — pozostają Expo Go, reminder, IPA i aktualizacja przez
+  Sideloadly.
+
+Pierwsze niezależne review wykryło problemy walidacji persistence, overdue
+remindera, invariantów completion, strefy czasowej i rolloveru dnia. Po poprawkach
+ten sam reviewer potwierdził ich zamknięcie i brak P0/P1 oraz nowych regresji.
 
 ## Cel
 
@@ -232,7 +244,9 @@ działania, a nie tylko czy poprawnie liczy serię.
 
 ## Ryzyka i decyzje do sprawdzenia w implementacji
 
-- zmiana strefy czasowej oraz zmiana czasu letni/zimowy;
+- harmonogram podąża za lokalną porą urządzenia: po zmianie strefy przyszłe
+  nierozpoczęte sesje są przeliczane, a historia pozostaje bez zmian; zachowanie
+  przy realnej zmianie czasu letni/zimowy nadal wymaga testu urządzeniowego;
 - ograniczenia lokalnych powiadomień w Expo Go vs instalowany IPA;
 - zachowanie zaplanowanego terminu po zmianie Protocolu;
 - znaczenie `skipped` względem `missed` dla Consistency;

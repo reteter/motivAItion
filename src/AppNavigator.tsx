@@ -4,13 +4,15 @@ import { CompletionResult, UserProfile } from './domain/types';
 import { BaselineScreen } from './screens/BaselineScreen';
 import { CompletionScreen } from './screens/CompletionScreen';
 import { DashboardScreen } from './screens/DashboardScreen';
+import { DataRecoveryScreen } from './screens/DataRecoveryScreen';
 import { HistoryScreen } from './screens/HistoryScreen';
 import { OnboardingScreen } from './screens/OnboardingScreen';
+import { ScheduleScreen } from './screens/ScheduleScreen';
 import { WorkoutScreen } from './screens/WorkoutScreen';
 import { useAppStore } from './store/AppStore';
 import { LoadingScreen } from './ui/components';
 
-type Route = 'dashboard' | 'workout' | 'history' | 'completion';
+type Route = 'dashboard' | 'workout' | 'history' | 'completion' | 'schedule';
 
 function completeDraft(draft: Partial<UserProfile>) {
   return Boolean(
@@ -31,12 +33,19 @@ export function AppNavigator() {
   const [completion, setCompletion] = useState<CompletionResult>();
 
   if (hydrationStatus === 'loading') return <LoadingScreen />;
+  if (hydrationStatus === 'read_error') return <DataRecoveryScreen />;
 
   if (!state.profile) {
     if (showBaseline || completeDraft(state.onboardingDraft)) {
       return <BaselineScreen />;
     }
     return <OnboardingScreen onReadyForBaseline={() => setShowBaseline(true)} />;
+  }
+
+  if (!state.schedule) return <ScheduleScreen />;
+
+  if (route === 'schedule') {
+    return <ScheduleScreen onDone={() => setRoute('dashboard')} />;
   }
 
   if (route === 'workout') {
@@ -71,6 +80,7 @@ export function AppNavigator() {
     <DashboardScreen
       onStart={() => setRoute('workout')}
       onHistory={() => setRoute('history')}
+      onSchedule={() => setRoute('schedule')}
     />
   );
 }

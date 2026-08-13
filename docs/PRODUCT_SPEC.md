@@ -1,10 +1,11 @@
 # PRODUCT_SPEC.md — AI Motivation & Training Coach
 
-> **Stan realizacji — 2026-08-13:** Milestone 1 został dostarczony i zweryfikowany
-> na fizycznym iPhonie oraz przez natywny build GitHub Actions. Szczegóły bieżącej
-> implementacji są w [PROJECT_STATUS.md](PROJECT_STATUS.md), a plan następnego
-> pionowego slice'a w [MILESTONE_2.md](MILESTONE_2.md). Ta specyfikacja pozostaje
-> dokumentem docelowego produktu, nie opisem wszystkich już dostępnych funkcji.
+> **Stan realizacji — 2026-08-13:** Milestone 1 został dostarczony i zweryfikowany.
+> Milestone 2 jest zaimplementowany, przeszedł niezależne review i lokalne gate'y;
+> oczekuje na test przypomnienia na fizycznym iPhonie oraz natywny build IPA.
+> Szczegóły są w [PROJECT_STATUS.md](PROJECT_STATUS.md) i
+> [MILESTONE_2.md](MILESTONE_2.md), a następny proponowany slice w
+> [MILESTONE_3.md](MILESTONE_3.md). Ta specyfikacja pozostaje dokumentem docelowym.
 
 ## 1. Cel projektu
 
@@ -847,10 +848,11 @@ Pierwszy MVP powinien odpowiedzieć na jedno pytanie:
 
 Jeżeli odpowiedź będzie pozytywna, system można rozszerzać na kolejne rodzaje celów.
 
-Milestone 1 pozwala sprawdzić użyteczność pojedynczego treningu. Nie wystarcza
-jeszcze do pomiaru regularności, ponieważ nie zapisuje jawnie zaplanowanych,
-przełożonych i pominiętych sesji. Milestone 2 ma domknąć tę tygodniową pętlę
-realizacji przed dodaniem prawdziwego modelu AI.
+Milestone 1 pozwolił sprawdzić użyteczność pojedynczego treningu. Milestone 2
+dodaje jawnie zaplanowane, wykonane, przełożone i pominięte sesje, Consistency
+7/30 oraz spokojny recovery. Po walidacji tygodniowego użycia te dane mogą stać
+się bezpiecznym wejściem dla ograniczonego modelu AI. Kontrakt pierwszego takiego
+adaptera opisuje [MILESTONE_3.md](MILESTONE_3.md).
 
 ---
 

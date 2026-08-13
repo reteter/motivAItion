@@ -1,149 +1,153 @@
 # Stan projektu motivAItion
 
 - Aktualność dokumentu: **2026-08-13**
-- Baseline aplikacji: `main` po commitach `57727c8`, `ea4290e`, `31a24c3`
-- Status: **Milestone 1 dostarczony**
+- Baseline wdrożeniowy: **Milestone 2 / build number 2**
+- Status: **implementacja i niezależne review zakończone; AC8 w toku**
 
-## Co można zrobić w aplikacji
+## Aktualny vertical slice
 
-Użytkownik może przejść kompletną pętlę pojedynczej sesji:
+Użytkownik może przejść pełną tygodniową pętlę realizacji:
 
 ```text
-onboarding
-  → baseline
-  → Protocol v1
-  → dzisiejszy trening Standard lub Minimum
-  → wykonanie kolejnych serii
-  → feedback łatwo / OK / trudno
-  → completion
-  → historia + XP + poziom
-  → adaptacja przyszłego Protocolu
+onboarding + baseline
+  → versioned Protocol
+  → wybór dni, pory i lokalnego przypomnienia
+  → konkretne WorkoutOccurrence
+  → Standard / Minimum / przełóż / pomiń
+  → trening i feedback albo ustrukturyzowany powód
+  → obiektywna historia + Consistency 7/30 + XP
+  → spokojny recovery po pominięciu
 ```
 
-Onboarding zbiera cel, doświadczenie, aktualną aktywność, realny czas, liczbę
-treningów tygodniowo, preferowaną porę i ograniczenia. Baseline obejmuje pompki,
-przysiady oraz plank. Pierwszy Protocol jest zachowawczy i zachowuje oddzielnie
-doświadczenie użytkownika oraz jego obecną sprawność.
+Dashboard rozróżnia sesję na dziś, dzień regeneracji, termin po czasie,
+ukończenie i powrót po przerwie. Standard i Minimum uruchamiają trening jednym
+tapnięciem. Przełożenie i pominięcie wymagają drugiego tapnięcia wskazującego
+powód ze zwalidowanego zbioru.
 
-Podczas treningu użytkownik obsługuje jedną serię naraz i przekazuje feedback
-jednym tapnięciem. Może też przed rozpoczęciem wybrać reakcję na brak czasu lub
-energii; coach redukuje wtedy trening do wersji Minimum.
+## Schedule i obiektywna historia
 
-## Jak działa coach
+`TrainingSchedule` zapisuje wybrane dni tygodnia, lokalną porę, strefę czasową i
+datę początku. Scheduler materializuje tylko najbliższe 14 dni i jest
+idempotentny. Nie odtwarza wielomiesięcznego backlogu po długiej nieobecności.
+Harmonogram podąża za lokalną porą użytkownika: po zmianie strefy przyszłe
+nierozpoczęte occurrences są przeliczane na tę samą godzinę czasu urządzenia,
+podczas gdy historia zachowuje pierwotne timestampy.
 
-Coach **nie łączy się obecnie z API modelu**. Jest lokalnym, deterministycznym
-adapterem, który:
+Każda sesja ma stabilne `WorkoutOccurrence` ze statusem `scheduled`,
+`in_progress`, `completed`, `skipped`, `missed` albo `rescheduled`. Przełożenie
+zamyka źródło i zachowuje relację z docelowym terminem; nie edytuje historii po
+cichu. Tylko ukończenie treningu może nadać status `completed` i przyznać XP.
 
-- zmniejsza dzisiejszy trening do Minimum;
-- podnosi lub obniża cele przyszłego Protocolu na podstawie feedbacku;
-- zapisuje ostrożne `BehavioralObservation` z confidence i dowodem;
-- generuje przygotowane, kontekstowe komunikaty w interfejsie.
+Consistency 7/30 liczy `completed / planned`. Standard i Minimum są wykonaniem,
+`skipped` oraz `missed` pozostają w mianowniku, a źródła `rescheduled` są
+pomijane. Dni odpoczynku nie są planowanymi occurrences i nie zaniżają wyniku.
 
-Każda zmiana przechodzi przez zamknięty typ `CoachAction` i walidację domenową.
-Coach nie może zmienić Goal, usunąć historii ani oznaczyć treningu jako wykonany.
-Aplikacja i lokalne dane pozostają źródłem prawdy.
+## Recovery i coach
 
-## Stan danych i persistence
+Coach nadal **nie łączy się z API modelu**. Lokalny deterministyczny adapter może
+wyłącznie wykonywać zamknięte `CoachAction`, między innymi:
 
-Stan `AppState` ma wersję schematu `1` i jest zapisywany w AsyncStorage pod
-kluczem `@motivaition/app-state/v1`. Obejmuje:
+- wybrać Minimum dla konkretnego occurrence;
+- przełożyć albo pominąć occurrence z reason;
+- zarekomendować Minimum po missed/skipped;
+- zapisać `BehavioralObservation` jako hipotezę z confidence i dowodem;
+- zmodyfikować wyłącznie przyszły Protocol na podstawie feedbacku.
 
-- profil i baseline;
-- pełną historię wersji Protocolu;
-- dzisiejszy Workout i wykonanie każdej serii;
-- historię maksymalnie 30 ostatnich treningów;
-- BehavioralObservations;
-- XP, liczbę ukończonych treningów i liczbę treningów Minimum.
+Po pominięciu następna sesja rekomenduje Minimum, ale użytkownik może wybrać
+Standard. Wybór jest zapisywany jako obserwacja, a aplikacja nie generuje kilku
+zaległych Workoutów do nadrobienia. Powód `pain_or_limitation` sam w sobie nigdy
+nie zwiększa trudności.
 
-Zapis nie nadpisuje poprawnych danych stanem domyślnym po błędzie hydratacji.
-Operacja zapisu jest odblokowana po hydratacji albo świadomej zmianie użytkownika.
+## Przypomnienia lokalne
 
-## Aktualne reguły produktu
+`src/notifications` zawiera port i adapter `expo-notifications`; domena nie
+importuje biblioteki natywnej. Po zapisaniu harmonogramu aplikacja prosi o zgodę
+systemową i planuje maksymalnie jedno przypomnienie dla najbliższej przyszłej
+sesji. Zmiana, przełożenie albo ukończenie anuluje nieaktualny identyfikator.
+Odmowa uprawnień nie blokuje harmonogramu ani treningów.
 
-- Standard daje `50 XP`, a Minimum `25 XP`.
-- Każde `100 XP` zwiększa poziom.
-- Feedback większości serii `trudno` obniża przyszły cel ćwiczenia.
-- Feedback wszystkich serii `łatwo` podnosi przyszły cel ćwiczenia.
-- Jedno ukończenie może utworzyć najwyżej jedną kolejną wersję Protocolu.
-- Historia wykonanego treningu nie jest zmieniana przez późniejszą adaptację.
-- Po wykonaniu nie powstaje drugi trening tego samego dnia.
-- Obecny odstęp między treningami jest uproszczony: odpowiednio 1, 2 lub 3 dni
-  dla Protocolu 4, 3 lub 2 razy w tygodniu.
+Build number został zwiększony do `2`, a bundle identifier pozostaje
+`com.jakub.motivaition`, aby aktualizacja przez Sideloadly mogła zachować dane.
 
-Ostatni punkt nie jest jeszcze prawdziwym harmonogramem. Aplikacja nie zna
-konkretnych dni tygodnia ani osobnych wystąpień planowanych sesji.
+## Persistence i migracja
 
-## Weryfikacja
+Stan ma `schemaVersion: 2`, ale zachowuje istniejący klucz AsyncStorage
+`@motivaition/app-state/v1`, aby odnaleźć instalację M1. Migracja v1 → v2 zachowuje
+profil, baseline, wersje Protocolu, Workout history, observations i XP, a dla
+historycznych treningów tworzy completed occurrences.
+
+Nieznany albo uszkodzony format jest odrzucany. Po błędzie odczytu stan domyślny
+nie może przejść do zwykłego flow ani zostać zapisany. Osobny ekran pozwala
+ponowić odczyt albo świadomie rozpocząć od nowa; jeżeli surowy payload został
+odczytany, przed zastąpieniem aplikacja zachowuje go pod lokalnym kluczem recovery.
+
+## Weryfikacja M2
 
 ### Zweryfikowane lokalnie
 
-- `npm ci`;
 - `npm run typecheck`;
-- `npm run test:domain`;
+- `npm run test:domain` — ścisła walidacja v1/v2, blokada persistence po read
+  error, daty, idempotencja, invarianty completion, overdue reminder,
+  przełożenie, Consistency, recovery, rollover oraz przeliczenie strefy;
 - `npm run check:expo`;
 - `npx expo install --check`;
 - `npx expo-doctor` — 18/18 checks;
-- `npx expo export --platform ios --output-dir dist`;
+- `npx expo export --platform ios --output-dir dist` — 731 modułów, bundle 2.04 MB;
 - parsowanie składni workflow i `git diff --check`.
 
-### Zweryfikowane na urządzeniu i w CI
+### Niezależne review
 
-- pełny flow aplikacji działa na fizycznym iPhonie przez Expo Go — potwierdzone
-  przez użytkownika;
-- [GitHub Actions run 31652514043](https://github.com/reteter/motivAItion/actions/runs/31652514043)
-  zbudował Release dla fizycznego iPhone'a bez podpisu;
-- opublikowany artefakt: `motivaition-ios-unsigned`;
-- plik w artefakcie: `motivaition-unsigned.ipa`.
+Świeży agent wykonał read-only review domeny, persistence, powiadomień, praktyk
+iOS i zgodności AC1–AC8. Pierwsza runda wykryła trzy P1 i cztery P2/spec gaps.
+Po poprawkach ten sam agent potwierdził zamknięcie wszystkich problemów
+implementacyjnych, brak nowych regresji oraz gotowość kodu do testu urządzeniowego
+i commita. Otwarte pozostały wyłącznie elementy wymagające realnego iPhone'a lub CI.
 
-Nie potwierdzono jeszcze instalacji tego konkretnego IPA przez Sideloadly.
+### Wymaga jeszcze weryfikacji
+
+- pełny flow M2 przez Expo Go na fizycznym iPhonie;
+- odebranie lokalnego przypomnienia oraz brak duplikatu po restarcie;
+- prawdziwy build GitHub Actions z `expo-notifications` i publikacja IPA;
+- instalacja aktualizacyjna IPA przez Sideloadly i zachowanie danych M1;
+- siedmiodniowy scenariusz Standard / Minimum / przełożenie albo pominięcie;
+- zachowanie przy realnej zmianie strefy czasowej oraz DST mimo lokalnych testów
+  kontraktu wall-clock.
+
+Ostatnim natywnie zweryfikowanym wydaniem pozostaje M1:
+[GitHub Actions run 31653186278](https://github.com/reteter/motivAItion/actions/runs/31653186278),
+artefakt `motivaition-ios-unsigned`, plik `motivaition-unsigned.ipa`.
 
 ## Aktualny stack
 
 - Expo `54.0.36`;
-- React Native `0.81.5`;
-- React `19.1.0`;
-- TypeScript `5.9.3`, strict;
+- React Native `0.81.5`, React `19.1.0`, TypeScript `5.9.3` strict;
 - AsyncStorage `2.2.0`;
+- `expo-notifications` `0.32.17`;
 - iOS only, Continuous Native Generation;
 - GitHub Actions `macos-26`, Xcode 26.6, build bez code signing.
 
-## Granice obecnej wersji
-
-M1 celowo nie zawiera:
-
-- połączenia z LLM, backendu ani bezpiecznego proxy API;
-- jawnego harmonogramu konkretnych sesji;
-- stanów `skipped`, `missed` i `rescheduled`;
-- lokalnych przypomnień;
-- Consistency 7/30;
-- edycji profilu, resetu danych i zmiany Protocolu przez UI;
-- biblioteki zamienników ćwiczeń;
-- postaci Gabawersum, questów i alternatywnego użytkownika;
-- analityki, kont, synchronizacji i płatności.
-
-`npm audit` raportuje 18 problemów zależności przechodnich: 7 moderate i 11 high,
-bez critical. Automatyczna proponowana naprawa podnosi Expo do niezweryfikowanego
-SDK 57, dlatego nie zastosowano `npm audit fix --force`. Aktualizacja toolchainu
-jest osobnym zadaniem wymagającym sprawdzenia Expo Go oraz prawdziwego builda IPA.
+`npm audit` raportuje 19 problemów zależności przechodnich: 8 moderate i 11 high,
+bez critical. Nie zastosowano `npm audit fix --force`, ponieważ proponuje
+niezweryfikowany upgrade głównego toolchainu Expo.
 
 ## Mapa kodu
 
 ```text
-App.tsx                     composition root
-src/AppNavigator.tsx        prosty lokalny routing ekranów
-src/domain/types.ts         źródłowe modele danych i CoachAction
-src/domain/protocol.ts      generowanie Protocolu i Workout
-src/domain/coach.ts         walidacja, actions i adaptacja
-src/store/AppStore.tsx      hydratacja, persistence i komendy aplikacji
-src/screens/                onboarding, baseline, dashboard, workout, completion, history
-src/ui/                     dostępne komponenty i theme
-tests/domain.test.ts        regresje domeny bez runtime React Native
-.github/workflows/          build niepodpisanego IPA
+src/domain/types.ts          modele v2 i CoachAction
+src/domain/schedule.ts       daty, occurrences, Consistency i recovery
+src/domain/migration.ts      bezpieczna migracja v1 → v2
+src/domain/persistence.ts    reguła blokady zapisu przed bezpieczną hydratacją
+src/domain/protocol.ts       generowanie i wersjonowanie Protocolu
+src/domain/coach.ts          walidacja actions i adaptacja
+src/store/AppStore.tsx       hydratacja, persistence i synchronizacja reminderów
+src/notifications/           port oraz lokalny adapter iOS
+src/screens/                 schedule, dashboard, workout, completion i historia
+tests/domain.test.ts         deterministyczne regresje domeny i migracji
 ```
 
 ## Następny krok
 
-Najbliższy zatwierdzony vertical slice to tygodniowa pętla realizacji opisana w
-[MILESTONE_2.md](MILESTONE_2.md). Prawdziwy model AI powinien wejść dopiero, gdy
-aplikacja potrafi przekazać mu rzetelne dane o planach, wykonaniu, przełożeniach i
-pominięciach.
+Najpierw należy zamknąć AC8: test Expo Go, lokalne przypomnienie, natywny workflow
+i instalacja aktualizacyjna IPA. Równolegle można przygotować kontrakty i fixture
+evals dla [M3 — Bounded AI Coach](MILESTONE_3.md). Włączenie zdalnego modelu dla
+użytkownika wymaga opt-in, bezpiecznego proxy i pozytywnego wyniku dogfood M2.

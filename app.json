@@ -7,10 +7,11 @@
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "platforms": ["ios"],
+    "plugins": ["expo-notifications"],
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.jakub.motivaition",
-      "buildNumber": "1"
+      "buildNumber": "2"
     }
   }
 }

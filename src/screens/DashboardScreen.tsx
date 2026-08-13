@@ -1,8 +1,21 @@
-import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  AppState as NativeAppState,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 
 import { currentProtocol, levelFromXp } from '../domain/protocol';
-import { ProtocolExercise } from '../domain/types';
+import {
+  consistency,
+  isOccurrenceOverdue,
+  millisecondsUntilNextLocalDay,
+  nextActionableOccurrence,
+  occurrenceForToday,
+} from '../domain/schedule';
+import { DecisionReason, ProtocolExercise } from '../domain/types';
 import { useAppStore } from '../store/AppStore';
 import {
   Body,
@@ -17,6 +30,14 @@ import {
 } from '../ui/components';
 import { colors, radius, spacing } from '../ui/theme';
 
+const reasons: Array<{ value: DecisionReason; label: string }> = [
+  { value: 'low_energy', label: 'Mało energii' },
+  { value: 'no_time', label: 'Brak czasu' },
+  { value: 'pain_or_limitation', label: 'Ból lub ograniczenie' },
+  { value: 'exercise_resistance', label: 'Opór przed ćwiczeniem' },
+  { value: 'other', label: 'Inny powód' },
+];
+
 function targetLabel(exercise: ProtocolExercise) {
   return exercise.unit === 'seconds'
     ? `${exercise.sets} × ${exercise.target} s`
@@ -27,20 +48,39 @@ function preferredTimeLabel(value: 'morning' | 'afternoon' | 'evening') {
   return { morning: 'rano', afternoon: 'w ciągu dnia', evening: 'wieczorem' }[value];
 }
 
+function consistencyLabel(completed: number, planned: number) {
+  return planned === 0 ? '—' : `${Math.round((completed / planned) * 100)}%`;
+}
+
+function dateLabel(iso: string) {
+  return new Date(iso).toLocaleDateString('pl-PL', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  });
+}
+
+type DecisionMode = 'skip' | 'reschedule';
+
 export function DashboardScreen({
   onStart,
   onHistory,
+  onSchedule,
 }: {
   onStart: () => void;
   onHistory: () => void;
+  onSchedule: () => void;
 }) {
   const {
     state,
     persistenceMessage,
     prepareToday,
-    reduceToday,
-    startWorkout,
+    chooseWorkout,
+    rescheduleToday,
+    skipToday,
   } = useAppStore();
+  const [decisionMode, setDecisionMode] = useState<DecisionMode>();
+  const [referenceNow, setReferenceNow] = useState(() => new Date());
   const [coachMessage, setCoachMessage] = useState(
     'Dziś nie szukamy idealnego momentu. Zaczynamy od pierwszej serii.',
   );
@@ -49,19 +89,68 @@ export function DashboardScreen({
     prepareToday();
   }, [prepareToday]);
 
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
+    const scheduleRollover = () => {
+      timer = setTimeout(() => {
+        setReferenceNow(new Date());
+        prepareToday();
+        scheduleRollover();
+      }, millisecondsUntilNextLocalDay());
+    };
+    scheduleRollover();
+    return () => clearTimeout(timer);
+  }, [prepareToday]);
+
+  useEffect(() => {
+    const subscription = NativeAppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        setReferenceNow(new Date());
+        prepareToday();
+      }
+    });
+    return () => subscription.remove();
+  }, [prepareToday]);
+
+  const now = referenceNow;
   const protocol = currentProtocol(state);
-  const workout = state.todayWorkout;
+  const occurrence = occurrenceForToday(state, now);
+  const nextOccurrence = nextActionableOccurrence(state, now);
   const xp = levelFromXp(state.progress.totalXp);
-  const completedToday = state.history.some(
-    (entry) =>
-      entry.completedAt &&
-      new Date(entry.completedAt).toDateString() === new Date().toDateString(),
+  const consistency7 = useMemo(
+    () => consistency(state.occurrences, 7, referenceNow),
+    [referenceNow, state.occurrences],
   );
+  const consistency30 = useMemo(
+    () => consistency(state.occurrences, 30, referenceNow),
+    [referenceNow, state.occurrences],
+  );
+  const canTrain =
+    occurrence?.status === 'scheduled' || occurrence?.status === 'in_progress';
+  const completedToday = occurrence?.status === 'completed';
+  const decidedToday =
+    occurrence?.status === 'skipped' || occurrence?.status === 'rescheduled';
+  const recovery = canTrain && occurrence.recommendedVariant === 'minimum';
+  const overdue = occurrence ? isOccurrenceOverdue(occurrence, now) : false;
+
+  function begin(variant: 'standard' | 'minimum') {
+    if (chooseWorkout(variant)) onStart();
+  }
 
   return (
     <Page>
       <TopBar
         title="motivAItion"
+        left={
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Edytuj harmonogram"
+            hitSlop={10}
+            onPress={onSchedule}
+          >
+            <Text style={styles.topLink}>Plan</Text>
+          </Pressable>
+        }
         right={
           <Pressable
             accessibilityRole="button"
@@ -69,7 +158,7 @@ export function DashboardScreen({
             hitSlop={10}
             onPress={onHistory}
           >
-            <Text style={styles.historyLink}>Historia</Text>
+            <Text style={styles.topLink}>Historia</Text>
           </Pressable>
         }
       />
@@ -77,7 +166,19 @@ export function DashboardScreen({
       <View style={styles.hero}>
         <View style={styles.heroCopy}>
           <Eyebrow>Dzisiaj</Eyebrow>
-          <Title>{completedToday ? 'Zrobione.' : 'Mały próg. Realny ruch.'}</Title>
+          <Title>
+            {completedToday
+              ? 'Zrobione.'
+              : decidedToday
+                ? 'Decyzja zapisana.'
+                : recovery
+                  ? 'Spokojny powrót.'
+                  : overdue
+                    ? 'Możesz zacząć teraz.'
+                    : canTrain
+                      ? 'Mały próg. Realny ruch.'
+                      : 'Dzień regeneracji.'}
+          </Title>
         </View>
         <View style={styles.levelBadge}>
           <Text style={styles.levelNumber}>{xp.level}</Text>
@@ -86,13 +187,31 @@ export function DashboardScreen({
       </View>
 
       <Card>
-        <View style={styles.xpHeader}>
-          <Text style={styles.cardTitle}>Twój progres</Text>
-          <Text style={styles.xpValue}>{xp.current} / {xp.required} XP</Text>
+        <View style={styles.consistencyHeader}>
+          <Text style={styles.cardTitle}>Consistency</Text>
+          <Text style={styles.xpValue}>{state.progress.totalXp} XP</Text>
+        </View>
+        <View style={styles.consistencyGrid}>
+          <View style={styles.consistencyCell}>
+            <Text style={styles.consistencyValue}>
+              {consistencyLabel(consistency7.completed, consistency7.planned)}
+            </Text>
+            <Text style={styles.cardMeta}>
+              7 dni · {consistency7.completed}/{consistency7.planned}
+            </Text>
+          </View>
+          <View style={styles.consistencyCell}>
+            <Text style={styles.consistencyValue}>
+              {consistencyLabel(consistency30.completed, consistency30.planned)}
+            </Text>
+            <Text style={styles.cardMeta}>
+              30 dni · {consistency30.completed}/{consistency30.planned}
+            </Text>
+          </View>
         </View>
         <ProgressBar value={xp.current / xp.required} />
         <Text style={styles.cardMeta}>
-          {state.progress.completedWorkouts} ukończonych treningów
+          Poziom {xp.level} · {xp.current}/{xp.required} XP do kolejnego
         </Text>
       </Card>
 
@@ -102,76 +221,115 @@ export function DashboardScreen({
         </View>
       ) : null}
 
-      {workout && protocol ? (
+      {canTrain && protocol && occurrence ? (
         <>
           <Card>
             <View style={styles.workoutHeader}>
               <View>
                 <Text style={styles.cardTitle}>
-                  {workout.variant === 'minimum' ? 'Wersja minimum' : 'Dzisiejszy trening'}
+                  {recovery ? 'Rekomendacja: Minimum' : 'Dzisiejsza sesja'}
                 </Text>
                 <Text style={styles.cardMeta}>
-                  Protocol v{workout.protocolVersion} · około {workout.variant === 'minimum' ? 4 : 10} min
+                  Protocol v{occurrence.protocolVersion} · {state.schedule?.localTime}
+                  {overdue ? ' · termin minął' : ''}
                 </Text>
               </View>
               <View style={styles.todayDot} />
             </View>
-
             <View style={styles.exerciseList}>
-              {workout.exercises.map((exercise) => (
+              {protocol.exercises.map((exercise) => (
                 <View key={exercise.id} style={styles.exerciseRow}>
                   <Text style={styles.exerciseName}>{exercise.name}</Text>
-                  <Text style={styles.exerciseTarget}>
-                    {exercise.sets.length} × {exercise.sets[0]?.target ?? 0}
-                    {exercise.unit === 'seconds' ? ' s' : ''}
-                  </Text>
+                  <Text style={styles.exerciseTarget}>{targetLabel(exercise)}</Text>
                 </View>
               ))}
             </View>
           </Card>
 
-          <CoachBubble>{coachMessage}</CoachBubble>
+          <CoachBubble>
+            {recovery
+              ? 'Po przerwie proponuję Minimum. Bez nadrabiania i bez kary — Standard nadal jest dostępny.'
+              : coachMessage}
+          </CoachBubble>
           <Button
-            label={workout.status === 'in_progress' ? 'Wróć do treningu' : 'Zacznij trening'}
-            onPress={() => {
-              startWorkout();
-              onStart();
-            }}
+            label={occurrence.status === 'in_progress' ? 'Wróć do treningu' : 'Zacznij Standard'}
+            onPress={() => begin(occurrence.chosenVariant ?? 'standard')}
           />
-
-          {workout.variant === 'standard' ? (
+          {occurrence.status === 'scheduled' ? (
             <View style={styles.resistanceActions}>
               <Button
-                label="Mam tylko 5 minut"
-                variant="secondary"
-                onPress={() => {
-                  reduceToday('limited_time');
-                  setCoachMessage('OK. Skracam dzisiejszy plan do jednej małej rundy.');
-                }}
+                label="Zrób Minimum"
+                variant={recovery ? 'primary' : 'secondary'}
+                onPress={() => begin('minimum')}
               />
-              <Button
-                label="Nie mam dziś energii"
-                variant="quiet"
-                onPress={() => {
-                  reduceToday('low_energy');
-                  setCoachMessage('Nie robimy pełnego treningu. Jedna krótka runda i zamykamy temat.');
-                }}
-              />
+              <View style={styles.twoColumns}>
+                <View style={styles.flexButton}>
+                  <Button
+                    label="Przełóż"
+                    variant="quiet"
+                    onPress={() => setDecisionMode('reschedule')}
+                  />
+                </View>
+                <View style={styles.flexButton}>
+                  <Button
+                    label="Pomiń"
+                    variant="quiet"
+                    onPress={() => setDecisionMode('skip')}
+                  />
+                </View>
+              </View>
             </View>
+          ) : null}
+
+          {decisionMode ? (
+            <Card>
+              <Text style={styles.cardTitle}>
+                {decisionMode === 'skip' ? 'Dlaczego pomijasz?' : 'Dlaczego przekładasz?'}
+              </Text>
+              <Text style={styles.cardMeta}>Jedno tapnięcie zapisze decyzję.</Text>
+              <View style={styles.reasonGrid}>
+                {reasons.map((reason) => (
+                  <Pressable
+                    key={reason.value}
+                    accessibilityRole="button"
+                    onPress={() => {
+                      if (decisionMode === 'skip') skipToday(reason.value);
+                      else rescheduleToday(reason.value);
+                      setCoachMessage(
+                        decisionMode === 'skip'
+                          ? 'Zapisane. Nie dokładam zaległości — wrócimy przy następnym terminie.'
+                          : 'Zapisane. Przenoszę sesję i aktualizuję przypomnienie.',
+                      );
+                      setDecisionMode(undefined);
+                    }}
+                    style={({ pressed }) => [styles.reason, pressed && styles.pressed]}
+                  >
+                    <Text style={styles.reasonText}>{reason.label}</Text>
+                  </Pressable>
+                ))}
+              </View>
+              <Button label="Anuluj" variant="quiet" onPress={() => setDecisionMode(undefined)} />
+            </Card>
           ) : null}
         </>
       ) : null}
 
-      {!workout && completedToday ? (
+      {!canTrain && completedToday ? (
         <>
-          <CoachBubble>Dzisiejszy trening jest zapisany. Nie dokładam drugiego tylko po to, żeby nabić licznik.</CoachBubble>
+          <CoachBubble>
+            Dzisiejszy trening jest zapisany. Nie dokładam drugiego tylko po to, żeby nabić licznik.
+          </CoachBubble>
           <Button label="Zobacz historię" variant="secondary" onPress={onHistory} />
         </>
       ) : null}
 
-      {!workout && !completedToday ? (
+      {!canTrain && !completedToday ? (
         <CoachBubble>
-          Dziś nie ma zaplanowanego treningu. Regeneracja jest częścią Protocolu — wróć jutro.
+          {decidedToday
+            ? 'Decyzja jest częścią historii. Nie tworzę backlogu — następny termin zaczyna się czysto.'
+            : nextOccurrence
+              ? `Dziś odpoczynek. Następna sesja: ${dateLabel(nextOccurrence.scheduledAt)}.`
+              : 'Dziś odpoczynek. Kolejna sesja pojawi się zgodnie z harmonogramem.'}
         </CoachBubble>
       ) : null}
 
@@ -195,20 +353,9 @@ export function DashboardScreen({
 }
 
 const styles = StyleSheet.create({
-  historyLink: {
-    color: colors.accentDark,
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  hero: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: spacing.md,
-  },
-  heroCopy: {
-    flex: 1,
-    gap: spacing.xs,
-  },
+  topLink: { color: colors.accentDark, fontSize: 14, fontWeight: '800' },
+  hero: { flexDirection: 'row', alignItems: 'flex-end', gap: spacing.md },
+  heroCopy: { flex: 1, gap: spacing.xs },
   levelBadge: {
     width: 72,
     height: 72,
@@ -217,64 +364,25 @@ const styles = StyleSheet.create({
     borderRadius: 36,
     backgroundColor: colors.progress,
   },
-  levelNumber: {
-    color: colors.surface,
-    fontSize: 28,
-    lineHeight: 30,
-    fontWeight: '900',
-  },
-  levelLabel: {
-    color: colors.progressSoft,
-    fontSize: 9,
-    fontWeight: '800',
-    letterSpacing: 0.8,
-  },
-  xpHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  cardTitle: {
-    color: colors.ink,
-    fontSize: 18,
-    fontWeight: '800',
-  },
-  cardMeta: {
-    color: colors.inkMuted,
-    fontSize: 13,
-    lineHeight: 19,
-  },
-  xpValue: {
-    color: colors.progress,
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  warning: {
-    padding: spacing.md,
+  levelNumber: { color: colors.surface, fontSize: 28, lineHeight: 30, fontWeight: '900' },
+  levelLabel: { color: colors.progressSoft, fontSize: 9, fontWeight: '800', letterSpacing: 0.8 },
+  consistencyHeader: { flexDirection: 'row', justifyContent: 'space-between' },
+  consistencyGrid: { flexDirection: 'row', gap: spacing.sm },
+  consistencyCell: {
+    flex: 1,
+    padding: spacing.sm,
     borderRadius: radius.sm,
-    backgroundColor: '#F5E1CF',
+    backgroundColor: colors.progressSoft,
   },
-  warningText: {
-    color: colors.warning,
-    fontSize: 13,
-    lineHeight: 19,
-  },
-  workoutHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  todayDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: colors.accent,
-  },
-  exerciseList: {
-    marginTop: spacing.sm,
-    borderTopWidth: 1,
-    borderColor: colors.line,
-  },
+  consistencyValue: { color: colors.progress, fontSize: 26, fontWeight: '900' },
+  cardTitle: { color: colors.ink, fontSize: 18, fontWeight: '800' },
+  cardMeta: { color: colors.inkMuted, fontSize: 13, lineHeight: 19 },
+  xpValue: { color: colors.progress, fontSize: 14, fontWeight: '800' },
+  warning: { padding: spacing.md, borderRadius: radius.sm, backgroundColor: '#F5E1CF' },
+  warningText: { color: colors.warning, fontSize: 13, lineHeight: 19 },
+  workoutHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  todayDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: colors.accent },
+  exerciseList: { marginTop: spacing.sm, borderTopWidth: 1, borderColor: colors.line },
   exerciseRow: {
     minHeight: 48,
     flexDirection: 'row',
@@ -283,31 +391,22 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderColor: colors.line,
   },
-  exerciseName: {
-    color: colors.ink,
-    fontSize: 16,
-    fontWeight: '700',
+  exerciseName: { color: colors.ink, fontSize: 16, fontWeight: '700' },
+  exerciseTarget: { color: colors.inkMuted, fontSize: 16, fontWeight: '700' },
+  resistanceActions: { gap: spacing.xs },
+  twoColumns: { flexDirection: 'row', gap: spacing.xs },
+  flexButton: { flex: 1 },
+  reasonGrid: { gap: spacing.xs },
+  reason: {
+    minHeight: 48,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.sm,
+    backgroundColor: colors.surfaceMuted,
   },
-  exerciseTarget: {
-    color: colors.inkMuted,
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  resistanceActions: {
-    gap: spacing.xs,
-  },
-  protocolRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: spacing.xs,
-  },
-  protocolName: {
-    color: colors.inkMuted,
-    fontSize: 15,
-  },
-  protocolTarget: {
-    color: colors.ink,
-    fontSize: 15,
-    fontWeight: '700',
-  },
+  reasonText: { color: colors.ink, fontSize: 15, fontWeight: '700' },
+  protocolRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: spacing.xs },
+  protocolName: { color: colors.inkMuted, fontSize: 15 },
+  protocolTarget: { color: colors.ink, fontSize: 15, fontWeight: '700' },
+  pressed: { opacity: 0.72 },
 });
