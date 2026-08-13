@@ -1,6 +1,6 @@
 # Milestone 4 — deweloperski czat AI
 
-- Status: **zaimplementowany, niezależnie zatwierdzony i wdrożony; build 6 oczekuje na natywne CI i dogfood na iPhonie**
+- Status: **zaimplementowany, niezależnie zatwierdzony i wdrożony; natywny build 6 zielony, dogfood na iPhonie otwarty**
 - Robocza nazwa: **Developer Coach Chat**
 
 ## Cel
@@ -135,8 +135,13 @@ dodaje około **0,01 USD**, więc szacowany koszt całego runu to co najmniej
 **0,1317 USD**. Dokładny koszt rozliczeniowy zależy od liczby wewnętrznych wywołań
 narzędzia widocznej na fakturze.
 
-AC2–AC8 są pokryte implementacją, deterministycznymi testami i live eval. AC1 i
-AC9 pozostają częściowo otwarte do czasu zielonego natywnego builda 6 oraz testu
+Natywny [GitHub Actions run 31698691485](https://github.com/reteter/motivAItion/actions/runs/31698691485)
+dla commita `d0bbd38` przeszedł w 4m32s. Opublikowany artefakt
+`motivaition-ios-unsigned` (6 396 322 B) zawiera dokładnie jeden plik
+`motivaition-unsigned.ipa` (6 474 991 B) z jednym bundle `Payload/*.app`.
+
+AC2–AC8 są pokryte implementacją, deterministycznymi testami i live eval. Natywna
+część AC9 jest zielona. AC1 i urządzeniowa część AC9 pozostają otwarte do testu
 na fizycznym iPhonie. Nie potwierdzono jeszcze urządzeniowo klawiatury, linków,
 VoiceOver, restartu/resetu, offline/timeout/revocation/quota ani użyteczności.
 

@@ -3,7 +3,7 @@
 - Aktualność dokumentu: **2026-08-13**
 - Baseline urządzeniowy: **Milestone 3 / build number 4 na fizycznym iPhonie**
 - Stan roboczy: **Milestone 4 / build number 6, nietrwały Developer Coach Chat**
-- Status: **M4 zatwierdzony i backend wdrożony; live eval 6/6, natywne CI i dogfood builda 6 są otwarte**
+- Status: **M4 zatwierdzony i backend wdrożony; live eval 6/6 i natywny build 6 zielone, dogfood urządzeniowy otwarty**
 
 ## Aktualny vertical slice
 
@@ -97,9 +97,12 @@ najmniej 0,01 USD za web search według bieżącego cennika.
 
 Świeży reviewer przeprowadził iteracyjny review kodu i po zamknięciu wszystkich
 findingów P1–P3 dwukrotnie zatwierdził finalny stan jako gotowy produkcyjnie.
-Otwarte pozostają wyłącznie natywny build IPA builda 6 i test na fizycznym
-iPhonie: klawiatura, linki, VoiceOver, restart/reset, offline, timeout, revocation,
-quota oraz ocena użyteczności.
+Natywny [GitHub Actions run 31698691485](https://github.com/reteter/motivAItion/actions/runs/31698691485)
+dla `d0bbd38` przeszedł w 4m32s. Artefakt `motivaition-ios-unsigned`
+(6 396 322 B) zawiera dokładnie jeden `motivaition-unsigned.ipa` (6 474 991 B)
+i jeden bundle `Payload/*.app`. Otwarty pozostaje test na fizycznym iPhonie:
+klawiatura, linki, VoiceOver, restart/reset, offline, timeout, revocation, quota
+oraz ocena użyteczności.
 
 ## Przypomnienia lokalne
 
@@ -256,7 +259,7 @@ tests/backend.test.ts        kontrakt auth/tools/quota/citations/revocation
    interwencje coacha, Bonus/nagrody oraz warstwy Gabawersum, questów i
    alternatywnego użytkownika.
 
-Najbliższy krok techniczny to natywny build i urządzeniowy dogfood builda 6.
+Najbliższy krok techniczny to podpisanie, instalacja i urządzeniowy dogfood builda 6.
 Zaimplementowany eksperyment opisuje [MILESTONE_4.md](MILESTONE_4.md): nietrwały
 czat deweloperski z domyślnym dostępem do `web_search`, bez actions aplikacji.
 Pula M3 20/20 000 pozostaje niezależna od wdrożonej puli czatu 30/200 000.

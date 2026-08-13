@@ -7,8 +7,8 @@
 > `gpt-5.6-terra`/Low i zweryfikowane połączenie end-to-end na fizycznym iPhonie.
 > Pełny eval modelu, failure modes oraz cykl apply/reject → outcome pozostają otwarte.
 > Milestone 4 jest zaimplementowany i niezależnie zatwierdzony; backend został
-> wdrożony, a live eval Terra/Low przeszedł 6/6 scenariuszy. Build 6 oczekuje na
-> natywne CI i walidację czatu na fizycznym iPhonie.
+> wdrożony, live eval Terra/Low przeszedł 6/6 scenariuszy, a natywny build 6 jest
+> zielony. Otwarta pozostaje walidacja czatu na fizycznym iPhonie.
 > Szczegóły są w [PROJECT_STATUS.md](PROJECT_STATUS.md) i
 > [MILESTONE_2.md](MILESTONE_2.md), kontrakt bounded coacha w
 > [MILESTONE_3.md](MILESTONE_3.md), a implementacja czatu M4 w

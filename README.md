@@ -26,8 +26,8 @@ transcription; its native CI build is green and awaits installation on the iPhon
 M4 is independently approved and its Worker is deployed. The pinned
 `gpt-5.6-terra`/Low live eval passes 6/6 scenarios, including injection, spoofed
 transcript, pain/dyspnea safety and WHO web search with citations. Build 6 adds
-the non-persistent developer chat and awaits native CI plus physical-iPhone
-dogfood.
+the non-persistent developer chat; its unsigned IPA build is green and awaits
+physical-iPhone dogfood.
 
 Current implementation details, verification evidence and known limitations are
 tracked in [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md). M2 scope and device
@@ -110,11 +110,10 @@ for a physical iPhone with signing disabled and publishes:
 
 The bundle identifier is `com.jakub.motivaition`. Verified M3 build 4 runs on a
 physical iPhone; build 5 has a verified unsigned IPA and awaits device installation.
-M4 uses build number 6; its native workflow and device installation remain release
-checks after the source push.
-Keep the
-bundle ID and the Apple ID used by Sideloadly stable across reinstalls to preserve
-local app data; increment the build number for later installable releases.
+M4 uses build number 6; its native workflow is green, while signing/installation
+and device dogfood remain open. Keep the bundle ID and the Apple ID used by
+Sideloadly stable across reinstalls to preserve local app data; increment the
+build number for later installable releases.
 
 To install on Windows, use 64-bit Sideloadly with the classic 64-bit iTunes and
 iCloud packages (not Microsoft Store editions). Connect and trust the unlocked
