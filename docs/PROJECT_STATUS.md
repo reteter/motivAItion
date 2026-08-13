@@ -1,9 +1,9 @@
 # Stan projektu motivAItion
 
 - Aktualność dokumentu: **2026-08-13**
-- Baseline wdrożeniowy: **Milestone 3 / build number 4 na fizycznym iPhonie**
-- Stan roboczy: **Milestone 3 / build number 5, poprawiony UX kodu dostępu**
-- Status: **Terra/Low działa end-to-end na iPhonie; pełny eval i rozszerzony dogfood są otwarte**
+- Baseline urządzeniowy: **Milestone 3 / build number 4 na fizycznym iPhonie**
+- Stan roboczy: **Milestone 4 / build number 6, nietrwały Developer Coach Chat**
+- Status: **M4 zatwierdzony i backend wdrożony; live eval 6/6, natywne CI i dogfood builda 6 są otwarte**
 
 ## Aktualny vertical slice
 
@@ -73,6 +73,34 @@ dzienne limity requestów/tokenów. Sekret OpenAI i model są wyłącznie konfig
 serwera. Worker działa pod `https://motivaition-coach.arkoniel.workers.dev` z
 `gpt-5.6-terra` i reasoning effort `low`.
 
+## Milestone 4 — Developer Coach Chat
+
+M4 dodaje z dashboardu osobny, jawnie deweloperski czat. Rozmowa istnieje tylko
+podczas otwartego ekranu: wyjście, restart i `Nowy czat` usuwają transcript.
+Snapshot danych jest ścisłą allowlistą, a request zachowuje najnowsze pełne tury
+w limitach liczby wiadomości, znaków i bajtów UTF-8. Odpowiedzi mogą użyć
+`web_search`; cytowania są renderowane inline oraz jako klikalne linki HTTPS.
+
+Czat nie otrzymuje function actions, nie zapisuje rozmowy i nie może zmieniać
+Protocolu, Workoutów, historii ani XP. Backend wymusza `store: false`, status
+ukończonej odpowiedzi i prawidłowe cytowania. Osobna atomowa pula M4 ma 30
+requestów i 200 000 tokenów dziennie, więc nie uszczupla limitu bounded coacha M3.
+Nieznane błędy pozostawiają konserwatywną rezerwację, a błędy z rozpoznanym usage
+są rozliczane według faktycznego kosztu.
+
+Worker version `4b7e7fca-859d-4714-a823-08f2633233c2` jest wdrożony. Końcowy
+live eval `gpt-5.6-terra`/Low przeszedł 6/6: dwa scenariusze celu, direct injection,
+spoofed transcript, ból/duszność/zawroty oraz WHO web search z trzema cytowaniami.
+Run zużył 37 112 tokenów wejścia i 1 929 wyjścia, z latency 1,866–11,303 s.
+Szacowany koszt to co najmniej 0,1317 USD: około 0,1217 USD za tokeny plus co
+najmniej 0,01 USD za web search według bieżącego cennika.
+
+Świeży reviewer przeprowadził iteracyjny review kodu i po zamknięciu wszystkich
+findingów P1–P3 dwukrotnie zatwierdził finalny stan jako gotowy produkcyjnie.
+Otwarte pozostają wyłącznie natywny build IPA builda 6 i test na fizycznym
+iPhonie: klawiatura, linki, VoiceOver, restart/reset, offline, timeout, revocation,
+quota oraz ocena użyteczności.
+
 ## Przypomnienia lokalne
 
 `src/notifications` zawiera port i adapter `expo-notifications`; domena nie
@@ -97,7 +125,7 @@ Token instalacji nie trafia do AppState ani AsyncStorage. Przechowuje go
 `expo-secure-store`; lokalna historia propozycji zawiera tylko proposal,
 źródło, decyzję, metadane i ewentualny wynik occurrence.
 
-## Weryfikacja M3 lokalnie
+## Weryfikacja M3 i M4 lokalnie
 
 - `npm run typecheck` — PASS;
 - `npm run test:domain` — PASS, w tym 20/20 fixtures i 100% safety fixtures;
@@ -109,7 +137,7 @@ Token instalacji nie trafia do AppState ani AsyncStorage. Przechowuje go
   i blokuje późniejsze odtworzenie porzuconych zdarzeń;
 - dodatkowe pola, obcy occurrence, forbidden action, expiry i drugie apply są odrzucane;
 - apply nie może przyznać XP, dopisać completion ani zmienić Goal;
-- `npm run check:expo` — PASS, build number 5, publiczny URL coacha i oba config plugins;
+- `npm run check:expo` — PASS, build number 6, publiczny URL coacha i oba config plugins;
 - `npx expo install --check` — PASS;
 - `npx expo-doctor` — 18/18 checks;
 - `npx expo export --platform ios --output-dir dist` — PASS, 741 modułów,
@@ -125,7 +153,7 @@ zdalnego coacha. Kod dostępu został zgodnie z kontraktem zużyty.
 Bieżący build 5 poprawia ręczne wpisywanie kodu: ekran reaguje na klawiaturę,
 pozwala pokazać/ukryć znaki, używa fontu monospace, liczy 43 znaki i pomija
 spacje. Generator kolejnych kodów nie używa mylących `I/l/O/0/1`. Lokalne gate'y
-builda 5 są zielone; jego natywny workflow i test tej poprawki na iPhonie są otwarte.
+i natywny workflow builda 5 są zielone; test tej poprawki na iPhonie jest otwarty.
 
 Nieznany albo uszkodzony format jest odrzucany. Po błędzie odczytu stan domyślny
 nie może przejść do zwykłego flow ani zostać zapisany. Osobny ekran pozwala
@@ -209,11 +237,11 @@ src/domain/protocol.ts       generowanie i wersjonowanie Protocolu
 src/domain/coach.ts          walidacja actions i adaptacja
 src/store/AppStore.tsx       hydratacja, persistence i synchronizacja reminderów
 src/notifications/           port oraz lokalny adapter iOS
-src/coach/                   kontekst, contracts, fallback, remote port i service
-src/screens/                 schedule, dashboard, AI opt-in, workout i historia
+src/coach/                   kontekst, contracts, fallback, chat i remote port
+src/screens/                 schedule, dashboard, AI opt-in, chat, workout i historia
 backend/                     Worker, auth/quota, Responses API i threat boundary
-tests/coach*.ts              20 fixtures, privacy, safety i failure modes
-tests/backend.test.ts        kontrakt auth/tool/quota/revocation
+tests/coach*.ts              M3 fixtures oraz M4 privacy, lifecycle i failure modes
+tests/backend.test.ts        kontrakt auth/tools/quota/citations/revocation
 ```
 
 ## Pozostałe względem specyfikacji
@@ -228,5 +256,7 @@ tests/backend.test.ts        kontrakt auth/tool/quota/revocation
    interwencje coacha, Bonus/nagrody oraz warstwy Gabawersum, questów i
    alternatywnego użytkownika.
 
-Najbliższy krok techniczny to commit/push builda 5, natywny IPA i sprawdzenie
-poprawionego pola kodu na iPhonie. Nie wymaga to zmiany wdrożonego Workera.
+Najbliższy krok techniczny to natywny build i urządzeniowy dogfood builda 6.
+Zaimplementowany eksperyment opisuje [MILESTONE_4.md](MILESTONE_4.md): nietrwały
+czat deweloperski z domyślnym dostępem do `web_search`, bez actions aplikacji.
+Pula M3 20/20 000 pozostaje niezależna od wdrożonej puli czatu 30/200 000.

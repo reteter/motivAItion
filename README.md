@@ -1,9 +1,9 @@
 # motivAItion
 
-Mobile-first, iOS-only training app with an active adaptive coach. The current
-working branch adds the bounded M3 AI loop on top of the verified weekly M2
-flow: the model may propose one validated next step, but the application remains
-the only source of truth.
+Mobile-first, iOS-only training app with an active adaptive coach. M4 adds an
+explicitly experimental, ephemeral developer chat next to the bounded M3 AI
+loop. The chat can advise and use web search, but the application remains the
+only source of truth and exposes no state-changing actions to it.
 
 ## Project status
 
@@ -20,13 +20,21 @@ Responses API. The Cloudflare Worker uses `gpt-5.6-terra` with low reasoning at
 secret. A real backend/model smoke test passes. The physical-device M3 flow is
 also verified for one-time enrollment and a real Terra response. Full
 real-model eval, device failure modes and apply/reject outcome dogfood remain
-open. Working build 5 improves keyboard handling, code visibility and manual
-transcription.
+open. Build 5 improves keyboard handling, code visibility and manual
+transcription; its native CI build is green and awaits installation on the iPhone.
+
+M4 is independently approved and its Worker is deployed. The pinned
+`gpt-5.6-terra`/Low live eval passes 6/6 scenarios, including injection, spoofed
+transcript, pain/dyspnea safety and WHO web search with citations. Build 6 adds
+the non-persistent developer chat and awaits native CI plus physical-iPhone
+dogfood.
 
 Current implementation details, verification evidence and known limitations are
 tracked in [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md). M2 scope and device
 acceptance criteria are in [docs/MILESTONE_2.md](docs/MILESTONE_2.md). M3 scope,
 evidence and remaining rollout work are in [docs/MILESTONE_3.md](docs/MILESTONE_3.md).
+M4 implementation and release evidence are in
+[docs/MILESTONE_4.md](docs/MILESTONE_4.md).
 
 ## What works locally
 
@@ -59,7 +67,9 @@ evidence and remaining rollout work are in [docs/MILESTONE_3.md](docs/MILESTONE_
   AsyncStorage;
 - portable Worker backend with an atomic one-time access code, enrollment limit,
   hashed revocable tokens, transactional daily quotas, privacy-safe decision
-  telemetry and one strict Responses API tool.
+  telemetry and one strict Responses API tool;
+- an ephemeral multi-turn developer chat with bounded context, separate quota,
+  optional web search, visible HTTPS citations and no application actions;
 - persistent bounded telemetry delivery with backoff, deduplication and immediate opt-out
   that cancels in-flight coach requests and prevents replay after re-enabling
   cleanup.
@@ -99,8 +109,10 @@ for a physical iPhone with signing disabled and publishes:
 - file after extracting the artifact: `motivaition-unsigned.ipa`
 
 The bundle identifier is `com.jakub.motivaition`. Verified M3 build 4 runs on a
-physical iPhone; the current source declares build number `5` and still requires
-native CI. Keep the
+physical iPhone; build 5 has a verified unsigned IPA and awaits device installation.
+M4 uses build number 6; its native workflow and device installation remain release
+checks after the source push.
+Keep the
 bundle ID and the Apple ID used by Sideloadly stable across reinstalls to preserve
 local app data; increment the build number for later installable releases.
 
@@ -130,3 +142,4 @@ material are intentionally excluded from Git.
 - [Current project state](docs/PROJECT_STATUS.md)
 - [Milestone 2 plan](docs/MILESTONE_2.md)
 - [Milestone 3 plan](docs/MILESTONE_3.md)
+- [Milestone 4 developer chat implementation](docs/MILESTONE_4.md)

@@ -122,12 +122,13 @@ Zaimplementowane:
 - wdrożony Worker, migracja SQLite Durable Object i prawdziwy smoke request;
 - build 4 zbudowany w natywnym CI, podpisany, zainstalowany i połączony z Terra/Low
   na fizycznym iPhonie;
-- roboczy build 5 poprawiający pole kodu dostępu i generator bez mylących znaków.
+- build 5 z zielonym natywnym CI, poprawiający pole kodu dostępu i generator bez
+  mylących znaków.
 
 Niewykonane lub niezweryfikowane:
 
 - pełny eval przypiętej konfiguracji na reprezentatywnych outputs realnego modelu;
-- native CI/IPA i urządzeniowa walidacja poprawki UX builda 5;
+- urządzeniowa walidacja poprawki UX builda 5;
 - airplane mode, revocation i opt-out podczas requestu na fizycznym iPhonie;
 - zaakceptowana i odrzucona propozycja wraz z późniejszym wynikiem w dogfood.
 

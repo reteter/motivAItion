@@ -78,6 +78,7 @@ interface AppStoreValue {
   setRemoteCoachConsent: (enabled: boolean) => Promise<void>;
   connectRemoteCoach: (accessCode: string) => Promise<boolean>;
   requestCoachProposal: () => Promise<void>;
+  markRemoteCoachRevoked: () => void;
   applyCoachProposal: (proposalId: string) => void;
   rejectCoachProposal: (proposalId: string) => void;
 }
@@ -647,6 +648,16 @@ export function AppStoreProvider({ children }: PropsWithChildren) {
     setCoachRequestStatus('idle');
   }, [coachRequestStatus, mutate, state]);
 
+  const markRemoteCoachRevoked = useCallback(() => {
+    mutate((current) => ({
+      ...current,
+      remoteCoach: {
+        ...current.remoteCoach,
+        installationStatus: 'revoked',
+      },
+    }));
+  }, [mutate]);
+
   const applyStoredCoachProposal = useCallback(
     (proposalId: string) => {
       mutate((current) => decideCoachProposal(current, proposalId, 'apply'));
@@ -683,6 +694,7 @@ export function AppStoreProvider({ children }: PropsWithChildren) {
       setRemoteCoachConsent,
       connectRemoteCoach,
       requestCoachProposal,
+      markRemoteCoachRevoked,
       applyCoachProposal: applyStoredCoachProposal,
       rejectCoachProposal: rejectStoredCoachProposal,
     }),
@@ -706,6 +718,7 @@ export function AppStoreProvider({ children }: PropsWithChildren) {
       setRemoteCoachConsent,
       connectRemoteCoach,
       requestCoachProposal,
+      markRemoteCoachRevoked,
       applyStoredCoachProposal,
       rejectStoredCoachProposal,
     ],

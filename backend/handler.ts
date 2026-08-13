@@ -1,6 +1,14 @@
 import { parseCoachContext } from '../src/coach/context';
+import {
+  MAX_CHAT_REQUEST_BYTES,
+  parseDeveloperChatRequest,
+} from '../src/coach/developerChat';
 import { sha256 } from './coordinator';
-import { requestModelProposal } from './openai';
+import {
+  ModelResponseError,
+  requestDeveloperChat,
+  requestModelProposal,
+} from './openai';
 import { BackendEnv } from './types';
 
 const JSON_HEADERS = {
@@ -35,14 +43,40 @@ function coordinatorRequest(
   });
 }
 
-async function requestJson(request: Request) {
-  const contentLength = Number(request.headers.get('content-length') ?? '0');
-  if (contentLength > 24_000) return undefined;
+async function requestJson(request: Request, maxBytes = 24_000) {
+  const contentLengthHeader = request.headers.get('content-length');
+  if (contentLengthHeader) {
+    const contentLength = Number(contentLengthHeader);
+    if (!Number.isInteger(contentLength) || contentLength < 0 || contentLength > maxBytes) {
+      return undefined;
+    }
+  }
+  if (!request.body) return undefined;
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
   try {
-    const value: unknown = await request.json();
-    return JSON.stringify(value).length <= 24_000 ? value : undefined;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > maxBytes) {
+        await reader.cancel('request_body_too_large');
+        return undefined;
+      }
+      chunks.push(value);
+    }
+    const bytes = new Uint8Array(totalBytes);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)) as unknown;
   } catch {
     return undefined;
+  } finally {
+    reader.releaseLock();
   }
 }
 
@@ -101,7 +135,13 @@ export async function handleRequest(
     if (!quota.ok) return quota;
     const startedAt = Date.now();
     try {
-      const result = await requestModelProposal(context, env, fetcher, now);
+      const result = await requestModelProposal(
+        context,
+        env,
+        fetcher,
+        now,
+        await safetyIdentifier(request),
+      );
       const inputTokens = result.inputTokens ?? 0;
       const outputTokens = result.outputTokens ?? 0;
       await coordinator(env).fetch(
@@ -141,5 +181,118 @@ export async function handleRequest(
     }
   }
 
+  if (request.method === 'POST' && url.pathname === '/v1/coach/chat') {
+    const authorization = await coordinator(env).fetch(
+      coordinatorRequest('/authorize', request, undefined, now),
+    );
+    if (!authorization.ok) return authorization;
+    const chatRequest = parseDeveloperChatRequest(
+      await requestJson(request, MAX_CHAT_REQUEST_BYTES),
+    );
+    if (!chatRequest) return json(400, { error: 'invalid_chat_request' });
+    // Rezerwacja ogranicza równoległą ekspozycję kosztową web search; settlement
+    // później zastępuje ją rzeczywistym usage zwróconym przez Responses API.
+    const reservedTokens = 50_000;
+    const quota = await coordinator(env).fetch(
+      coordinatorRequest('/chat/reserve', request, { reservedTokens }, now),
+    );
+    if (!quota.ok) return quota;
+    const startedAt = Date.now();
+    try {
+      const result = await requestDeveloperChat(
+        chatRequest,
+        env,
+        fetcher,
+        await safetyIdentifier(request),
+      );
+      const settlement = await coordinator(env).fetch(
+        coordinatorRequest(
+          '/chat/settle',
+          request,
+          {
+            actualTokens: result.inputTokens + result.outputTokens,
+            reservedTokens,
+          },
+          now,
+        ),
+      );
+      if (!settlement.ok) {
+        console.log(
+          JSON.stringify({
+            event: 'developer_chat',
+            result: 'settlement_error',
+            status: settlement.status,
+            latencyMs: Date.now() - startedAt,
+          }),
+        );
+        return settlement.status === 401
+          ? settlement
+          : json(502, { error: 'coach_unavailable' });
+      }
+      const metadata = {
+        requestId: result.requestId,
+        requestedAt: now.toISOString(),
+        latencyMs: Date.now() - startedAt,
+        modelVersion: result.modelVersion,
+        inputTokens: result.inputTokens,
+        outputTokens: result.outputTokens,
+      };
+      console.log(
+        JSON.stringify({
+          event: 'developer_chat',
+          result: 'success',
+          webSearchUsed: result.webSearchUsed,
+          ...metadata,
+        }),
+      );
+      return json(200, {
+        reply: {
+          text: result.text,
+          citations: result.citations,
+          webSearchUsed: result.webSearchUsed,
+        },
+        metadata,
+      });
+    } catch (error) {
+      const reportedTokens = error instanceof ModelResponseError
+        ? error.actualTokens
+        : undefined;
+      const actualTokens =
+        typeof reportedTokens === 'number' && reportedTokens <= reservedTokens
+          ? reportedTokens
+          : reservedTokens;
+      const settlement = await coordinator(env).fetch(
+        coordinatorRequest(
+          '/chat/settle',
+          request,
+          { actualTokens, reservedTokens },
+          now,
+        ),
+      );
+      console.log(
+        JSON.stringify({
+          event: 'developer_chat',
+          result: 'model_or_validation_error',
+          usageKnown: reportedTokens !== undefined,
+          reservationRetained: actualTokens === reservedTokens,
+          settlementStatus: settlement.status,
+          latencyMs: Date.now() - startedAt,
+        }),
+      );
+      return settlement.status === 401
+        ? settlement
+        : json(502, { error: 'coach_unavailable' });
+    }
+  }
+
   return json(404, { error: 'not_found' });
+}
+
+async function safetyIdentifier(request: Request) {
+  const token = request.headers
+    .get('authorization')
+    ?.match(/^Bearer ([A-Za-z0-9_-]{32,})$/)?.[1];
+  if (!token) return undefined;
+  const tokenHash = await sha256(token);
+  return `inst_${tokenHash.slice(0, 56)}`;
 }

@@ -3,9 +3,16 @@ import * as SecureStore from 'expo-secure-store';
 import { CoachProposalV1, RemoteCoachRequestMetadata } from '../domain/types';
 import { CoachContextV1 } from './context';
 import { parseCoachProposal } from './contracts';
+import {
+  DeveloperChatCitation,
+  DeveloperChatReply,
+  DeveloperChatRequestV1,
+  MAX_CHAT_ASSISTANT_MESSAGE_LENGTH,
+} from './developerChat';
 
 const INSTALLATION_TOKEN_KEY = 'motivaition.remote-coach.installation-token.v1';
 const DEFAULT_TIMEOUT_MS = 5_000;
+const CHAT_TIMEOUT_MS = 30_000;
 
 export interface RemoteProposalResult {
   proposal: CoachProposalV1;
@@ -15,10 +22,12 @@ export interface RemoteProposalResult {
 export interface RemoteCoach {
   isConfigured(): boolean;
   cancelPending(): void;
+  cancelChatPending(): void;
   hasInstallation(): Promise<boolean>;
   enroll(accessCode: string): Promise<void>;
   revoke(): Promise<void>;
   propose(context: CoachContextV1): Promise<RemoteProposalResult>;
+  chat(request: DeveloperChatRequestV1): Promise<DeveloperChatReply>;
   recordEvent(event: {
     proposalId: string;
     requestId: string;
@@ -35,7 +44,9 @@ export class RemoteCoachError extends Error {
       | 'unauthorized'
       | 'rate_limited'
       | 'timeout'
+      | 'cancelled'
       | 'network'
+      | 'invalid_request'
       | 'invalid_response',
     message: string,
   ) {
@@ -59,6 +70,9 @@ async function fetchWithTimeout(
     return await fetch(input, { ...init, signal: controller.signal });
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
+      if (externalSignal?.aborted) {
+        throw new RemoteCoachError('cancelled', 'Żądanie zostało anulowane.');
+      }
       throw new RemoteCoachError('timeout', 'Zdalny coach nie odpowiedział na czas.');
     }
     throw new RemoteCoachError('network', 'Nie udało się połączyć ze zdalnym coachem.');
@@ -98,6 +112,7 @@ function configuredEndpoint() {
 
 export class HttpRemoteCoach implements RemoteCoach {
   private readonly pendingControllers = new Set<AbortController>();
+  private readonly pendingChatControllers = new Set<AbortController>();
   private pendingEnrollment?: Promise<void>;
 
   constructor(private readonly baseUrl = configuredEndpoint()) {}
@@ -109,6 +124,12 @@ export class HttpRemoteCoach implements RemoteCoach {
   cancelPending() {
     for (const controller of this.pendingControllers) controller.abort();
     this.pendingControllers.clear();
+    this.cancelChatPending();
+  }
+
+  cancelChatPending() {
+    for (const controller of this.pendingChatControllers) controller.abort();
+    this.pendingChatControllers.clear();
   }
 
   private async cancelable<T>(request: (signal: AbortSignal) => Promise<T>) {
@@ -118,6 +139,16 @@ export class HttpRemoteCoach implements RemoteCoach {
       return await request(controller.signal);
     } finally {
       this.pendingControllers.delete(controller);
+    }
+  }
+
+  private async cancelableChat<T>(request: (signal: AbortSignal) => Promise<T>) {
+    const controller = new AbortController();
+    this.pendingChatControllers.add(controller);
+    try {
+      return await request(controller.signal);
+    } finally {
+      this.pendingChatControllers.delete(controller);
     }
   }
 
@@ -275,6 +306,142 @@ export class HttpRemoteCoach implements RemoteCoach {
           : {}),
         ...(typeof candidate.outputTokens === 'number'
           ? { outputTokens: Math.round(candidate.outputTokens) }
+          : {}),
+      },
+    };
+  }
+
+  async chat(request: DeveloperChatRequestV1): Promise<DeveloperChatReply> {
+    if (!this.isConfigured()) {
+      throw new RemoteCoachError('not_configured', 'Endpoint AI coacha nie jest skonfigurowany.');
+    }
+    const token = await SecureStore.getItemAsync(INSTALLATION_TOKEN_KEY);
+    if (!token) {
+      throw new RemoteCoachError('not_enrolled', 'Ta instalacja nie ma aktywnego tokenu.');
+    }
+    const response = await this.cancelableChat((signal) =>
+      fetchWithTimeout(
+        endpointUrl(this.baseUrl, '/v1/coach/chat'),
+        {
+          method: 'POST',
+          headers: {
+            authorization: `Bearer ${token}`,
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify(request),
+        },
+        CHAT_TIMEOUT_MS,
+        signal,
+      ),
+    );
+    if (response.status === 401 || response.status === 403) {
+      throw new RemoteCoachError('unauthorized', 'Token instalacji został unieważniony.');
+    }
+    if (response.status === 429) {
+      throw new RemoteCoachError('rate_limited', 'Dzienny limit czatu został wykorzystany.');
+    }
+    if (response.status === 400 || response.status === 413) {
+      throw new RemoteCoachError('invalid_request', 'Rozmowa przekroczyła bezpieczny limit.');
+    }
+    if (!response.ok) {
+      throw new RemoteCoachError('network', 'Czat jest chwilowo niedostępny.');
+    }
+    const body: unknown = await response.json();
+    if (!body || typeof body !== 'object') {
+      throw new RemoteCoachError('invalid_response', 'Backend zwrócił pustą odpowiedź.');
+    }
+    const raw = body as { reply?: unknown; metadata?: unknown };
+    if (!raw.reply || typeof raw.reply !== 'object' || !raw.metadata || typeof raw.metadata !== 'object') {
+      throw new RemoteCoachError('invalid_response', 'Odpowiedź czatu nie przeszła walidacji.');
+    }
+    const reply = raw.reply as {
+      text?: unknown;
+      citations?: unknown;
+      webSearchUsed?: unknown;
+    };
+    const metadata = raw.metadata as {
+      requestId?: unknown;
+      requestedAt?: unknown;
+      latencyMs?: unknown;
+      modelVersion?: unknown;
+      inputTokens?: unknown;
+      outputTokens?: unknown;
+    };
+    if (
+      typeof reply.text !== 'string' ||
+      !reply.text.trim() ||
+      reply.text.length > MAX_CHAT_ASSISTANT_MESSAGE_LENGTH ||
+      !Array.isArray(reply.citations) ||
+      reply.citations.length > 40 ||
+      typeof reply.webSearchUsed !== 'boolean' ||
+      typeof metadata.requestId !== 'string' ||
+      metadata.requestId.length > 200 ||
+      typeof metadata.requestedAt !== 'string' ||
+      !Number.isFinite(Date.parse(metadata.requestedAt)) ||
+      (metadata.latencyMs !== undefined &&
+        (typeof metadata.latencyMs !== 'number' || metadata.latencyMs < 0)) ||
+      (metadata.modelVersion !== undefined && typeof metadata.modelVersion !== 'string') ||
+      typeof metadata.inputTokens !== 'number' ||
+      !Number.isInteger(metadata.inputTokens) ||
+      metadata.inputTokens < 0 ||
+      typeof metadata.outputTokens !== 'number' ||
+      !Number.isInteger(metadata.outputTokens) ||
+      metadata.outputTokens < 0
+    ) {
+      throw new RemoteCoachError('invalid_response', 'Odpowiedź czatu nie przeszła walidacji.');
+    }
+    const citations: DeveloperChatCitation[] = [];
+    for (const value of reply.citations) {
+      if (!value || typeof value !== 'object') {
+        throw new RemoteCoachError('invalid_response', 'Cytowania czatu są nieprawidłowe.');
+      }
+      const citation = value as {
+        startIndex?: unknown;
+        endIndex?: unknown;
+        title?: unknown;
+        url?: unknown;
+      };
+      if (
+        typeof citation.startIndex !== 'number' ||
+        !Number.isInteger(citation.startIndex) ||
+        citation.startIndex < 0 ||
+        typeof citation.endIndex !== 'number' ||
+        !Number.isInteger(citation.endIndex) ||
+        citation.endIndex <= citation.startIndex ||
+        citation.endIndex > reply.text.length ||
+        typeof citation.title !== 'string' ||
+        !citation.title.trim() ||
+        citation.title.length > 300 ||
+        typeof citation.url !== 'string' ||
+        !/^https:\/\//i.test(citation.url) ||
+        citation.url.length > 2_048
+      ) {
+        throw new RemoteCoachError('invalid_response', 'Cytowania czatu są nieprawidłowe.');
+      }
+      citations.push({
+        startIndex: citation.startIndex,
+        endIndex: citation.endIndex,
+        title: citation.title.trim(),
+        url: citation.url,
+      });
+    }
+    if (reply.webSearchUsed && citations.length === 0) {
+      throw new RemoteCoachError('invalid_response', 'Odpowiedź z sieci nie zawiera cytowań.');
+    }
+    return {
+      text: reply.text,
+      citations,
+      webSearchUsed: reply.webSearchUsed,
+      metadata: {
+        requestId: metadata.requestId,
+        requestedAt: metadata.requestedAt,
+        inputTokens: metadata.inputTokens,
+        outputTokens: metadata.outputTokens,
+        ...(typeof metadata.latencyMs === 'number'
+          ? { latencyMs: Math.round(metadata.latencyMs) }
+          : {}),
+        ...(typeof metadata.modelVersion === 'string'
+          ? { modelVersion: metadata.modelVersion }
           : {}),
       },
     };

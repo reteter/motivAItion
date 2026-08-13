@@ -8,8 +8,9 @@
     "ios": "expo start --ios",
     "test:domain": "tsc -p tsconfig.domain-tests.json && node .domain-test-build/tests/domain.test.js && node .domain-test-build/tests/coach.test.js",
     "test:backend": "tsc -p tsconfig.backend.json && node .backend-test-build/tests/backend.test.js",
-    "test": "npm run test:domain && npm run test:backend",
+    "test": "npm run test:domain && npm run test:backend && node tests/chat-eval-rubric.test.mjs",
     "coach:generate-access-code": "node backend/generate-access-code.mjs",
+    "coach:evaluate-chat": "node backend/evaluate-chat.mjs",
     "typecheck": "tsc --noEmit",
     "check:expo": "expo config --type public"
   },

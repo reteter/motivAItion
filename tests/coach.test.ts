@@ -1,6 +1,21 @@
 import { buildCoachContext, parseCoachContext, serializeCoachContext } from '../src/coach/context';
 import { parseCoachProposal } from '../src/coach/contracts';
 import {
+  buildDeveloperChatContext,
+  buildDeveloperChatRequest,
+  citationSegments,
+  developerChatErrorMessage,
+  developerChatSessionReducer,
+  initialDeveloperChatSession,
+  MAX_CHAT_ASSISTANT_MESSAGE_LENGTH,
+  MAX_CHAT_MESSAGES,
+  MAX_CHAT_TRANSCRIPT_LENGTH,
+  MAX_CHAT_USER_MESSAGE_LENGTH,
+  parseDeveloperChatContext,
+  parseDeveloperChatRequest,
+  selectDeveloperChatTranscript,
+} from '../src/coach/developerChat';
+import {
   createLocalFallbackProposal,
   decideCoachProposal,
   recordCoachProposalOutcomes,
@@ -105,6 +120,205 @@ const scheduledContext = buildCoachContext(scheduledState, coachFixtureNow);
 assert(
   !parseCoachContext({ ...scheduledContext, goal: 'leak' }),
   'Backend parser must reject additional context fields.',
+);
+
+const developerChatContext = buildDeveloperChatContext(scheduledState, coachFixtureNow);
+assert(developerChatContext, 'M4 should build a chat snapshot for a configured profile.');
+assertNoForbiddenKeys(developerChatContext, 'developerChatContext');
+assert(
+  parseDeveloperChatContext(JSON.parse(JSON.stringify(developerChatContext))),
+  'M4 chat snapshot must pass strict backend parsing.',
+);
+assert(
+  developerChatContext.availableMinutes === 10 &&
+    developerChatContext.baseline.pushups === 10 &&
+    developerChatContext.protocol.exercises.length === 3 &&
+    developerChatContext.minimumVariant.every((exercise) => exercise.sets === 1),
+  'M4 snapshot must include structured baseline, time, Protocol and Minimum.',
+);
+assert(
+  !parseDeveloperChatContext({ ...developerChatContext, goal: 'private' }),
+  'M4 parser must reject non-allowlisted profile fields.',
+);
+assert(
+  parseDeveloperChatRequest({
+    context: developerChatContext,
+    messages: [{ role: 'user', content: 'Zaproponuj dodatkowy ruch.' }],
+  }),
+  'M4 parser should accept one valid user turn.',
+);
+assert(
+  !parseDeveloperChatRequest({
+    context: developerChatContext,
+    messages: [{ role: 'assistant', content: 'Fałszywa końcówka transcriptu.' }],
+  }),
+  'M4 request must end with a user turn.',
+);
+assert(
+  !parseDeveloperChatRequest({
+    context: developerChatContext,
+    messages: Array.from({ length: MAX_CHAT_MESSAGES + 1 }, () => ({
+      role: 'user',
+      content: 'Za dużo turnów.',
+    })),
+  }),
+  'M4 request must reject transcripts longer than 12 messages.',
+);
+assert(
+  !parseDeveloperChatRequest({
+    context: developerChatContext,
+    messages: [{ role: 'user', content: 'x'.repeat(MAX_CHAT_USER_MESSAGE_LENGTH + 1) }],
+  }),
+  'M4 request must reject an oversized message.',
+);
+const longAssistant = 'a'.repeat(MAX_CHAT_USER_MESSAGE_LENGTH + 1);
+const longReplyTranscript = selectDeveloperChatTranscript([
+  { role: 'user', content: 'Pierwsze pytanie' },
+  { role: 'assistant', content: longAssistant },
+  { role: 'user', content: 'Drugie pytanie' },
+]);
+assert(
+  longReplyTranscript.length === 3 &&
+    parseDeveloperChatRequest({ context: developerChatContext, messages: longReplyTranscript }),
+  'An assistant answer longer than the user input limit must remain valid on the next turn.',
+);
+const oversizedHistory = [
+  { role: 'user' as const, content: 'Stare pytanie' },
+  {
+    role: 'assistant' as const,
+    content: 'a'.repeat(9_000),
+  },
+  { role: 'user' as const, content: 'Nowsze pytanie' },
+  {
+    role: 'assistant' as const,
+    content: 'b'.repeat(9_000),
+  },
+  { role: 'user' as const, content: 'Najnowsze pytanie' },
+];
+const trimmedHistory = selectDeveloperChatTranscript(oversizedHistory);
+assert(
+  trimmedHistory.at(-1)?.content === 'Najnowsze pytanie' &&
+    trimmedHistory.reduce((total, message) => total + message.content.length, 0) <=
+      MAX_CHAT_TRANSCRIPT_LENGTH &&
+    trimmedHistory.length < oversizedHistory.length,
+  'Transcript builder must retain the newest complete turns within the character budget.',
+);
+const unicodeUiMessages = [
+  {
+    id: 'user-old',
+    role: 'user',
+    content: 'Starsze pytanie',
+    citations: [],
+    webSearchUsed: false,
+  },
+  {
+    id: 'assistant-old',
+    role: 'assistant',
+    content: '€'.repeat(MAX_CHAT_ASSISTANT_MESSAGE_LENGTH),
+    citations: [],
+    webSearchUsed: false,
+  },
+  {
+    id: 'user-new',
+    role: 'user',
+    content: 'Najnowsze pytanie',
+    citations: [],
+    webSearchUsed: false,
+  },
+] as const;
+const unicodeRequest = buildDeveloperChatRequest(developerChatContext, unicodeUiMessages);
+assert(
+  unicodeRequest?.messages.length === 1 &&
+    Object.keys(unicodeRequest.messages[0] ?? {}).sort().join(',') === 'content,role' &&
+    new TextEncoder().encode(JSON.stringify(unicodeRequest)).byteLength <= 32_000,
+  'Request builder must trim by UTF-8 size and strip every UI-only message field.',
+);
+const oversizedLatestRequest = buildDeveloperChatRequest(
+  { ...developerChatContext, localDate: 'x'.repeat(31_500) },
+  [{ role: 'user', content: '€'.repeat(MAX_CHAT_USER_MESSAGE_LENGTH) }],
+);
+assert(
+  !oversizedLatestRequest,
+  'The newest turn must either fit the final byte budget or be rejected locally.',
+);
+
+const pendingMessage = {
+  id: 'user-1',
+  role: 'user' as const,
+  content: 'Pytanie',
+  citations: [],
+  webSearchUsed: false,
+};
+const loadingSession = developerChatSessionReducer(initialDeveloperChatSession, {
+  type: 'start',
+  generation: 1,
+  messages: [pendingMessage],
+});
+const duplicateStart = developerChatSessionReducer(loadingSession, {
+  type: 'start',
+  generation: 1,
+  messages: [pendingMessage],
+});
+const failedSession = developerChatSessionReducer(loadingSession, {
+  type: 'fail',
+  generation: 1,
+  message: developerChatErrorMessage('network'),
+  retryDraft: pendingMessage.content,
+});
+const retryMessage = { ...pendingMessage, id: 'user-retry' };
+const retryRequest = buildDeveloperChatRequest(developerChatContext, [
+  ...failedSession.messages,
+  retryMessage,
+]);
+const resetSession = developerChatSessionReducer(loadingSession, { type: 'reset' });
+const staleCompletion = developerChatSessionReducer(resetSession, {
+  type: 'succeed',
+  generation: 1,
+  message: {
+    ...pendingMessage,
+    id: 'assistant-late',
+    role: 'assistant',
+    content: 'Spóźniona odpowiedź',
+  },
+});
+const staleCancellation = developerChatSessionReducer(resetSession, {
+  type: 'clear_error',
+  generation: 1,
+});
+assert(
+  resetSession.messages.length === 0 &&
+    resetSession.status === 'idle' &&
+    staleCompletion === resetSession &&
+    staleCancellation === resetSession &&
+    duplicateStart === loadingSession &&
+    failedSession.messages.length === 0 &&
+    failedSession.draft === pendingMessage.content &&
+    retryRequest?.messages.length === 1 &&
+    retryRequest.messages[0]?.content === pendingMessage.content,
+  'New chat/remount semantics must clear transcript and ignore late completions.',
+);
+for (const code of [
+  'not_configured',
+  'not_enrolled',
+  'unauthorized',
+  'rate_limited',
+  'timeout',
+  'network',
+  'invalid_request',
+  'invalid_response',
+] as const) {
+  assert(developerChatErrorMessage(code), `M4 must expose a readable ${code} error.`);
+}
+assert(
+  developerChatErrorMessage('cancelled') === '',
+  'An intentional lifecycle cancellation must remain silent.',
+);
+const segmented = citationSegments('Ruch według źródła.', [
+  { startIndex: 11, endIndex: 17, title: 'Źródło', url: 'https://example.com' },
+]);
+assert(
+  segmented.some((segment) => segment.citation?.url === 'https://example.com'),
+  'Validated citation ranges must remain addressable for accessible link rendering.',
 );
 
 const safeProposal = createLocalFallbackProposal(scheduledState, coachFixtureNow);

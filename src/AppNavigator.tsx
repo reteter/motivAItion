@@ -6,6 +6,7 @@ import { CompletionScreen } from './screens/CompletionScreen';
 import { CoachSettingsScreen } from './screens/CoachSettingsScreen';
 import { DashboardScreen } from './screens/DashboardScreen';
 import { DataRecoveryScreen } from './screens/DataRecoveryScreen';
+import { DeveloperChatScreen } from './screens/DeveloperChatScreen';
 import { HistoryScreen } from './screens/HistoryScreen';
 import { OnboardingScreen } from './screens/OnboardingScreen';
 import { ScheduleScreen } from './screens/ScheduleScreen';
@@ -13,7 +14,14 @@ import { WorkoutScreen } from './screens/WorkoutScreen';
 import { useAppStore } from './store/AppStore';
 import { LoadingScreen } from './ui/components';
 
-type Route = 'dashboard' | 'workout' | 'history' | 'completion' | 'schedule' | 'coach';
+type Route =
+  | 'dashboard'
+  | 'workout'
+  | 'history'
+  | 'completion'
+  | 'schedule'
+  | 'coach'
+  | 'developer-chat';
 
 function completeDraft(draft: Partial<UserProfile>) {
   return Boolean(
@@ -69,6 +77,15 @@ export function AppNavigator() {
     return <CoachSettingsScreen onBack={() => setRoute('dashboard')} />;
   }
 
+  if (route === 'developer-chat') {
+    return (
+      <DeveloperChatScreen
+        onBack={() => setRoute('dashboard')}
+        onOpenSettings={() => setRoute('coach')}
+      />
+    );
+  }
+
   if (route === 'completion' && completion) {
     return (
       <CompletionScreen
@@ -87,6 +104,7 @@ export function AppNavigator() {
       onHistory={() => setRoute('history')}
       onSchedule={() => setRoute('schedule')}
       onCoach={() => setRoute('coach')}
+      onDeveloperChat={() => setRoute('developer-chat')}
     />
   );
 }

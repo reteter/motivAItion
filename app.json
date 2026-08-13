@@ -16,7 +16,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.jakub.motivaition",
-      "buildNumber": "5"
+      "buildNumber": "6"
     }
   }
 }

@@ -8,11 +8,14 @@ import {
 const INSTALLATION_PREFIX = 'installation:';
 const ACCESS_CODE_PREFIX = 'access-code:';
 const USAGE_PREFIX = 'usage:';
+const CHAT_USAGE_PREFIX = 'chat-usage:';
 const ENROLLMENT_PREFIX = 'enrollment:';
 const TELEMETRY_KEY = 'telemetry:events';
 const ENROLLMENT_ATTEMPTS_PER_HOUR = 5;
 const TELEMETRY_RETENTION_MS = 30 * 24 * 60 * 60 * 1_000;
 const ACCESS_CODE_PATTERN = /^[A-Za-z0-9_-]{43}$/;
+
+type QuotaPool = 'coach' | 'chat';
 
 interface InstallationRecord {
   createdAt: string;
@@ -123,10 +126,16 @@ export class CoachCoordinator {
         : json(401, { error: 'unauthorized' });
     }
     if (request.method === 'POST' && url.pathname === '/reserve') {
-      return this.reserve(request, tokenHash, now);
+      return this.reserve(request, tokenHash, now, 'coach');
     }
     if (request.method === 'POST' && url.pathname === '/settle') {
-      return this.settle(request, tokenHash, now);
+      return this.settle(request, tokenHash, now, 'coach');
+    }
+    if (request.method === 'POST' && url.pathname === '/chat/reserve') {
+      return this.reserve(request, tokenHash, now, 'chat');
+    }
+    if (request.method === 'POST' && url.pathname === '/chat/settle') {
+      return this.settle(request, tokenHash, now, 'chat');
     }
     if (request.method === 'POST' && url.pathname === '/revoke') {
       return this.revoke(tokenHash, now);
@@ -180,25 +189,37 @@ export class CoachCoordinator {
       : json(403, { error: 'invalid_or_used_access_code' });
   }
 
-  private async reserve(request: Request, tokenHash: string, now: Date) {
+  private async reserve(
+    request: Request,
+    tokenHash: string,
+    now: Date,
+    pool: QuotaPool,
+  ) {
     const body = await requestJson(request);
     const reservedTokens = body?.reservedTokens;
+    const minimumReservation = pool === 'chat' ? 2_000 : 500;
+    const maximumReservation = pool === 'chat' ? 200_000 : 24_500;
     if (
       typeof reservedTokens !== 'number' ||
       !Number.isInteger(reservedTokens) ||
-      reservedTokens < 500 ||
-      reservedTokens > 24_500
+      reservedTokens < minimumReservation ||
+      reservedTokens > maximumReservation
     ) return json(400, { error: 'invalid_reservation' });
     const result = await this.state.storage.transaction(async (transaction) => {
       const record = await installation(transaction, tokenHash);
       if (!record || record.revoked) return 'unauthorized' as const;
-      const usageKey = `${USAGE_PREFIX}${tokenHash}:${utcDay(now)}`;
+      const usagePrefix = pool === 'chat' ? CHAT_USAGE_PREFIX : USAGE_PREFIX;
+      const usageKey = `${usagePrefix}${tokenHash}:${utcDay(now)}`;
       const usage = (await transaction.get<UsageRecord>(usageKey)) ?? {
         requests: 0,
         tokens: 0,
       };
-      const maxRequests = positiveLimit(this.env.MAX_REQUESTS_PER_DAY, 20);
-      const maxTokens = positiveLimit(this.env.MAX_TOKENS_PER_DAY, 20_000);
+      const maxRequests = pool === 'chat'
+        ? positiveLimit(this.env.MAX_CHAT_REQUESTS_PER_DAY, 30)
+        : positiveLimit(this.env.MAX_REQUESTS_PER_DAY, 20);
+      const maxTokens = pool === 'chat'
+        ? positiveLimit(this.env.MAX_CHAT_TOKENS_PER_DAY, 200_000)
+        : positiveLimit(this.env.MAX_TOKENS_PER_DAY, 20_000);
       if (usage.requests >= maxRequests || usage.tokens + reservedTokens > maxTokens) {
         return 'rate_limited' as const;
       }
@@ -213,21 +234,30 @@ export class CoachCoordinator {
     return json(200, { reservedTokens });
   }
 
-  private async settle(request: Request, tokenHash: string, now: Date) {
+  private async settle(
+    request: Request,
+    tokenHash: string,
+    now: Date,
+    pool: QuotaPool,
+  ) {
     const body = await requestJson(request);
     const actualTokens = body?.actualTokens;
     const reservedTokens = body?.reservedTokens;
+    const minimumReservation = pool === 'chat' ? 2_000 : 500;
+    const maximumReservation = pool === 'chat' ? 200_000 : 24_500;
     if (
       typeof actualTokens !== 'number' || !Number.isInteger(actualTokens) || actualTokens < 0 ||
       typeof reservedTokens !== 'number' || !Number.isInteger(reservedTokens) ||
-      reservedTokens < 500 || reservedTokens > 24_500 || actualTokens > reservedTokens
+      reservedTokens < minimumReservation || reservedTokens > maximumReservation ||
+      actualTokens > reservedTokens
     ) {
       return json(400, { error: 'invalid_usage' });
     }
     const authorized = await this.state.storage.transaction(async (transaction) => {
       const record = await installation(transaction, tokenHash);
       if (!record || record.revoked) return false;
-      const usageKey = `${USAGE_PREFIX}${tokenHash}:${utcDay(now)}`;
+      const usagePrefix = pool === 'chat' ? CHAT_USAGE_PREFIX : USAGE_PREFIX;
+      const usageKey = `${usagePrefix}${tokenHash}:${utcDay(now)}`;
       const usage = (await transaction.get<UsageRecord>(usageKey)) ?? {
         requests: 0,
         tokens: reservedTokens,

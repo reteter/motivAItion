@@ -6,9 +6,13 @@
 > tygodniowego użycia. Milestone 3 ma wdrożony backend, przypięty model
 > `gpt-5.6-terra`/Low i zweryfikowane połączenie end-to-end na fizycznym iPhonie.
 > Pełny eval modelu, failure modes oraz cykl apply/reject → outcome pozostają otwarte.
+> Milestone 4 jest zaimplementowany i niezależnie zatwierdzony; backend został
+> wdrożony, a live eval Terra/Low przeszedł 6/6 scenariuszy. Build 6 oczekuje na
+> natywne CI i walidację czatu na fizycznym iPhonie.
 > Szczegóły są w [PROJECT_STATUS.md](PROJECT_STATUS.md) i
-> [MILESTONE_2.md](MILESTONE_2.md), a następny proponowany slice w
-> [MILESTONE_3.md](MILESTONE_3.md). Ta specyfikacja pozostaje dokumentem docelowym.
+> [MILESTONE_2.md](MILESTONE_2.md), kontrakt bounded coacha w
+> [MILESTONE_3.md](MILESTONE_3.md), a implementacja czatu M4 w
+> [MILESTONE_4.md](MILESTONE_4.md). Ta specyfikacja pozostaje dokumentem docelowym.
 
 ## 1. Cel projektu
 
@@ -857,6 +861,12 @@ dodaje jawnie zaplanowane, wykonane, przełożone i pominięte sesje, Consistenc
 7/30 oraz spokojny recovery. Milestone 3 przekazuje ich zminimalizowane agregaty
 do ograniczonego modelu AI i został połączony end-to-end na iPhonie. Jego kontrakt
 i pozostałe kryteria dogfood opisuje [MILESTONE_3.md](MILESTONE_3.md).
+
+Milestone 4 dodaje nietrwały, doradczy czat z domyślnym
+`web_search`. Jest świadomym wyjątkiem badawczym od zasady „coach nie jest
+dodatkowym chatem”: nie ma actions aplikacji, nie zapisuje rozmowy i nie wchodzi
+do publicznego zakresu bez osobnej walidacji urządzeniowej. Implementację opisuje
+[MILESTONE_4.md](MILESTONE_4.md).
 
 ---
 

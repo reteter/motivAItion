@@ -82,11 +82,13 @@ export function DashboardScreen({
   onHistory,
   onSchedule,
   onCoach,
+  onDeveloperChat,
 }: {
   onStart: () => void;
   onHistory: () => void;
   onSchedule: () => void;
   onCoach: () => void;
+  onDeveloperChat: () => void;
 }) {
   const {
     state,
@@ -336,6 +338,21 @@ export function DashboardScreen({
         ) : null}
       </Card>
 
+      <Card>
+        <View style={styles.coachCardHeader}>
+          <View style={styles.coachCardCopy}>
+            <Text style={styles.cardTitle}>Developer Coach Chat</Text>
+            <Text style={styles.cardMeta}>DEV · nietrwały czat · web search dostępny</Text>
+          </View>
+          <View style={styles.devDot} />
+        </View>
+        <Text style={styles.cardMeta}>
+          Eksperymentalna rozmowa o dzisiejszym ruchu. Nie zapisuje transcriptu i nie
+          może zmienić stanu aplikacji.
+        </Text>
+        <Button label="Otwórz czat DEV" variant="secondary" onPress={onDeveloperChat} />
+      </Card>
+
       {canTrain && protocol && occurrence ? (
         <>
           <Card>
@@ -514,6 +531,7 @@ const styles = StyleSheet.create({
   coachStatus: { color: colors.progress, fontSize: 13, lineHeight: 19 },
   workoutHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   todayDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: colors.accent },
+  devDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: colors.progress },
   exerciseList: { marginTop: spacing.sm, borderTopWidth: 1, borderColor: colors.line },
   exerciseRow: {
     minHeight: 48,

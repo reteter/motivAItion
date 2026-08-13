@@ -16,6 +16,8 @@ export interface BackendEnv {
   PROMPT_VERSION: string;
   MAX_REQUESTS_PER_DAY?: string;
   MAX_TOKENS_PER_DAY?: string;
+  MAX_CHAT_REQUESTS_PER_DAY?: string;
+  MAX_CHAT_TOKENS_PER_DAY?: string;
 }
 
 export interface UsageRecord {
