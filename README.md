@@ -6,12 +6,10 @@ and a calm recovery should make a real workout more likely to happen again.
 
 ## Project status
 
-Milestone 2 is implemented, independently reviewed and passes local domain and
-Expo gates. Its notification flow and build number 2 still need physical-iPhone
-validation before the milestone is fully closed. The first native M2 build runs
-after these changes reach `main`.
-The last verified M1 [iOS build](https://github.com/reteter/motivAItion/actions/runs/31653186278)
-publishes the `motivaition-ios-unsigned` artifact.
+Milestone 2 is implemented, independently reviewed and passes local domain,
+Expo and native iOS gates. The first M2 [device build](https://github.com/reteter/motivAItion/actions/runs/31657121631)
+publishes build number 2 as `motivaition-ios-unsigned`. Notification delivery and
+the update path still need physical-iPhone validation before M2 is fully closed.
 
 The coach currently runs locally from deterministic rules. It does **not** call a
 model API and there is no API key, backend or cloud sync. This is intentional:

@@ -1,8 +1,8 @@
 # PRODUCT_SPEC.md — AI Motivation & Training Coach
 
 > **Stan realizacji — 2026-08-13:** Milestone 1 został dostarczony i zweryfikowany.
-> Milestone 2 jest zaimplementowany, przeszedł niezależne review i lokalne gate'y;
-> oczekuje na test przypomnienia na fizycznym iPhonie oraz natywny build IPA.
+> Milestone 2 jest zaimplementowany, przeszedł niezależne review, lokalne gate'y
+> i natywny build IPA; oczekuje na test przypomnienia i aktualizacji na iPhonie.
 > Szczegóły są w [PROJECT_STATUS.md](PROJECT_STATUS.md) i
 > [MILESTONE_2.md](MILESTONE_2.md), a następny proponowany slice w
 > [MILESTONE_3.md](MILESTONE_3.md). Ta specyfikacja pozostaje dokumentem docelowym.

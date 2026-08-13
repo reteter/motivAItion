@@ -2,7 +2,7 @@
 
 - Aktualność dokumentu: **2026-08-13**
 - Baseline wdrożeniowy: **Milestone 2 / build number 2**
-- Status: **implementacja i niezależne review zakończone; AC8 w toku**
+- Status: **implementacja, niezależne review i natywny build zakończone; test urządzeniowy AC8 w toku**
 
 ## Aktualny vertical slice
 
@@ -107,15 +107,25 @@ i commita. Otwarte pozostały wyłącznie elementy wymagające realnego iPhone'a
 
 - pełny flow M2 przez Expo Go na fizycznym iPhonie;
 - odebranie lokalnego przypomnienia oraz brak duplikatu po restarcie;
-- prawdziwy build GitHub Actions z `expo-notifications` i publikacja IPA;
 - instalacja aktualizacyjna IPA przez Sideloadly i zachowanie danych M1;
 - siedmiodniowy scenariusz Standard / Minimum / przełożenie albo pominięcie;
 - zachowanie przy realnej zmianie strefy czasowej oraz DST mimo lokalnych testów
   kontraktu wall-clock.
 
-Ostatnim natywnie zweryfikowanym wydaniem pozostaje M1:
-[GitHub Actions run 31653186278](https://github.com/reteter/motivAItion/actions/runs/31653186278),
-artefakt `motivaition-ios-unsigned`, plik `motivaition-unsigned.ipa`.
+### Zweryfikowane w natywnym CI
+
+[GitHub Actions run 31657121631](https://github.com/reteter/motivAItion/actions/runs/31657121631)
+dla commita `70a274e` zakończył się sukcesem w 4m16s. Runner wygenerował projekt
+iOS, zainstalował CocoaPods, zbudował Release dla fizycznego urządzenia bez
+podpisu, spakował i opublikował:
+
+- artefakt: `motivaition-ios-unsigned` — 6 329 596 B;
+- plik w artefakcie: `motivaition-unsigned.ipa` — 6 407 984 B.
+
+Pobrana zawartość artefaktu została sprawdzona i zawiera dokładnie jeden
+oczekiwany plik IPA. Workflow zgłosił nieblokujące ostrzeżenie o migracji
+wewnętrznego runtime Node dla `actions/upload-artifact@v4`; build aplikacji nadal
+używa skonfigurowanego Node 20.
 
 ## Aktualny stack
 
@@ -147,7 +157,7 @@ tests/domain.test.ts         deterministyczne regresje domeny i migracji
 
 ## Następny krok
 
-Najpierw należy zamknąć AC8: test Expo Go, lokalne przypomnienie, natywny workflow
-i instalacja aktualizacyjna IPA. Równolegle można przygotować kontrakty i fixture
+Najpierw należy zamknąć pozostałe AC8: test Expo Go, lokalne przypomnienie i
+instalacja aktualizacyjna IPA. Równolegle można przygotować kontrakty i fixture
 evals dla [M3 — Bounded AI Coach](MILESTONE_3.md). Włączenie zdalnego modelu dla
 użytkownika wymaga opt-in, bezpiecznego proxy i pozytywnego wyniku dogfood M2.

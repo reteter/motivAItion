@@ -1,15 +1,15 @@
 # Milestone 2 — tygodniowa pętla realizacji
 
-- Status: **implementacja i niezależne review zakończone 2026-08-13; AC8 w toku**
+- Status: **implementacja, review i natywny build zakończone 2026-08-13; test iPhone/Sideloadly w toku**
 - Robocza nazwa: **Return Tomorrow**
 
 ## Stan kryteriów po implementacji
 
 - AC1, AC2, AC3, AC5, AC6 i AC7: **PASS** w testach domeny i review;
-- AC4: **PARTIAL** — logika jednego przyszłego przypomnienia jest zweryfikowana,
-  odbiór i permission flow wymagają fizycznego iPhone'a;
-- AC8: **NOT VERIFIED** — pozostają Expo Go, reminder, IPA i aktualizacja przez
-  Sideloadly.
+- AC4: **PARTIAL** — logika i natywny build z `expo-notifications` są
+  zweryfikowane, odbiór i permission flow wymagają fizycznego iPhone'a;
+- AC8: **PARTIAL** — IPA jest zbudowane i opublikowane; pozostają Expo Go,
+  reminder oraz aktualizacja przez Sideloadly z zachowaniem danych.
 
 Pierwsze niezależne review wykryło problemy walidacji persistence, overdue
 remindera, invariantów completion, strefy czasowej i rolloveru dnia. Po poprawkach
