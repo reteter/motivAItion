@@ -8,7 +8,7 @@ import {
   WorkoutOccurrence,
 } from '../src/domain/types';
 
-export const coachFixtureNow = new Date(2026, 7, 17, 9, 0);
+export const coachFixtureNow = new Date('2026-08-17T07:00:00.000Z');
 
 const profile: UserProfile = {
   goal: 'Poufny cel użytkownika, którego nie wolno wysłać',
